@@ -12,11 +12,14 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 - **Jaque resaltado** — el rey en jaque se muestra en rojo
 - **Movimientos legales** — al seleccionar una pieza, aparecen puntos en las casillas a donde puede moverse
 
-### Navegación del historial
-- **Flechas ⏮ ◀ ▶ ⏭** debajo del tablero para retroceder y avanzar jugadas como en chess.com
-- **Clic en cualquier jugada** del historial para ir directamente a esa posición
-- **Teclado ← →** para navegar sin usar el ratón
-- **Modo revisión** — el tablero es de solo lectura mientras revisas; el juego continúa cuando vuelves a "En vivo"
+### Deshacer / Rehacer
+- **Flechas ⏮ ◀ ▶ ⏭** debajo del tablero — deshacer y rehacer jugadas como en chess.com o Word
+- **⏮ / ⏭** deshacer todo de una vez / volver al final
+- En modo normal deshace 2 medias jugadas a la vez (tu jugada + la del bot) para que siempre vuelva a ser tu turno
+- En modo análisis deshace 1 medio movimiento a la vez
+- Desde cualquier posición puedes hacer un movimiento diferente y se descarta el "futuro" almacenado (nueva línea)
+- Badge **+N por rehacer** cuando hay jugadas en el stack de rehacer; **● En vivo** cuando estás en la posición actual
+- **Teclado ← → y Ctrl+Z / Ctrl+Y** para deshacer/rehacer sin tocar el ratón
 
 ### Análisis y sugerencias
 - **Sugerencias inteligentes** — las 3 mejores jugadas con explicación táctica en español
@@ -38,15 +41,6 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 - El encabezado del panel indica el turno activo: `⚡ Análisis · ♔ Turno Blancas` / `⚡ Análisis · ♚ Turno Negras`
 - Ideal para reproducir partidas de GM paso a paso y entender las decisiones de ambos bandos
 - Se activa/desactiva con un clic; la partida en curso no se reinicia
-
-### Editor de posición
-- **Paleta de piezas** — coloca blancas y negras en cualquier casilla con un clic
-- **Borrador** — elimina piezas individuales del tablero
-- **Entrada de FEN** — pega cualquier FEN de un libro, Lichess, Chess.com o base de datos; el tablero actualiza en tiempo real
-- **Turno / Juegas como** — elige quién mueve primero (blancas o negras); ese color es el tuyo, Stockfish juega el contrario
-- Acciones rápidas: posición inicial, cargar posición actual de la partida, limpiar tablero
-- **Validación** — avisa si falta un Rey o hay peones en fila 1/8 antes de aplicar
-- Al aplicar la posición, el panel de sugerencias muestra inmediatamente las mejores jugadas para el turno activo
 
 ### Historial y replay
 - **Historial de jugadas** en notación algebraica estándar (SAN)
@@ -88,12 +82,11 @@ chess-trainer/
     │   ├── api/
     │   │   └── chess.js    # Llamadas HTTP al backend
     │   ├── components/
-    │   │   ├── Board.jsx           # Tablero interactivo (+ modo revisión)
+    │   │   ├── Board.jsx           # Tablero interactivo con undo/redo
     │   │   ├── AdvantageBar.jsx    # Barra de ventaja en centipawns
-    │   │   ├── BoardEditor.jsx     # Editor de posición con paleta y entrada FEN
     │   │   ├── ChessClock.jsx      # Reloj de ajedrez con cuenta regresiva
     │   │   ├── ControlPanel.jsx    # Panel de configuración + selector de reloj
-    │   │   ├── MoveHistory.jsx     # Historial clicable + replay modal
+    │   │   ├── MoveHistory.jsx     # Historial + replay modal
     │   │   └── MoveSuggestions.jsx # Sugerencias + estrategia rival + tips
     │   ├── App.jsx          # Componente raíz
     │   ├── App.css          # Estilos globales
@@ -238,9 +231,9 @@ La API REST corre en `http://localhost:8000`. Puedes explorarla en:
    - Cada tarjeta explica la jugada y lo que el rival podría responder
    - El tip azul al pie da un consejo de entrenamiento para esa posición
 6. **Pide una pista** con "💡 Pedir pista" para ver la mejor jugada resaltada en azul
-7. **Navega el historial** con ⏮ ◀ ▶ ⏭ debajo del tablero (o teclas ← →)
-   - Haz clic en cualquier jugada del historial para ir directamente a esa posición
-   - El tablero entra en modo revisión (solo lectura); pulsa ⏭ para volver al juego
+7. **Deshaz y rehaz jugadas** con ⏮ ◀ ▶ ⏭ debajo del tablero (o ← → / Ctrl+Z / Ctrl+Y)
+   - Al deshacer puedes mover de forma diferente y se crea una nueva línea
+   - El badge muestra **+N por rehacer** cuando hay jugadas en el stack, o **● En vivo** en la posición actual
 8. Al terminar, pulsa **▶ Replay** en el historial para reproducir toda la partida
 
 ### Seguir partidas de GM / Análisis libre
@@ -250,17 +243,6 @@ La API REST corre en `http://localhost:8000`. Puedes explorarla en:
 3. Después de cada jugada el panel muestra automáticamente la **mejor respuesta** para el bando que sigue
 4. Reproduce movimiento a movimiento cualquier partida de un libro o torneo y compara con lo que sugiere Stockfish
 5. Para volver al modo normal (con bot) pulsa el botón nuevamente
-
-### Entrenar posiciones de libros
-
-1. Pulsa **✎ Editor de posición** en el panel derecho
-2. Selecciona una pieza de la paleta y haz clic en la casilla del tablero para colocarla
-   - Botón **✕** = borrador (elimina piezas)
-   - **↺ Pos. inicial** restaura la posición de partida estándar
-   - **⊘ Limpiar** vacía el tablero
-3. Para cargar directamente desde un libro o base de datos: pega el FEN en el campo de texto — el tablero se actualiza en tiempo real
-4. Elige **Turno / Juegas como**: ese color es el tuyo; Stockfish jugará el contrario
-5. Pulsa **♟ Aplicar posición** — el panel de sugerencias muestra inmediatamente las mejores jugadas
 
 ---
 
