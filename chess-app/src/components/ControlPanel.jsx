@@ -73,6 +73,15 @@ const SettingRow = ({ label, description, checked, onChange, disabled }) => (
   </label>
 );
 
+const CLOCK_OPTIONS = [
+  { label: "1'",  minutes: 1  },
+  { label: "3'",  minutes: 3  },
+  { label: "5'",  minutes: 5  },
+  { label: "10'", minutes: 10 },
+  { label: "30'", minutes: 30 },
+  { label: "∞",   minutes: 0  },
+];
+
 const ControlPanel = ({
   settings = {},
   onSettingChange,
@@ -85,6 +94,8 @@ const ControlPanel = ({
   gameStatus = {},
   hintMove = null,
   lastMoveSan = null,
+  clockMinutes = 0,
+  onClockChange,
 }) => {
   const { label, elo, color } = getLevelInfo(skillLevel);
   const { turn, inCheck, gameOver, isThinking } = gameStatus;
@@ -257,6 +268,29 @@ const ControlPanel = ({
           </div>
         </div>
       )}
+
+      {/* ── 6b. Selector de reloj ── */}
+      <div className="panel-section">
+        <div className="section-header">
+          <span className="section-title">Reloj</span>
+          {clockMinutes > 0 && (
+            <span style={{ fontSize: 10, color: "var(--gold)" }}>{clockMinutes} min</span>
+          )}
+        </div>
+        <div className="clock-opts">
+          {CLOCK_OPTIONS.map((opt) => (
+            <button
+              key={opt.minutes}
+              className={`clock-opt-btn ${clockMinutes === opt.minutes ? "clock-opt-active" : ""}`}
+              onClick={() => onClockChange?.(opt.minutes)}
+              disabled={isThinking}
+              title={opt.minutes === 0 ? "Sin límite de tiempo" : `${opt.minutes} minutos por jugador`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ── 7. Botones de acción ── */}
       <div className="action-btns">

@@ -19,7 +19,7 @@
  *                         fenHistory[i] = posición después de la jugada i-1
  */
 
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Chessboard } from "react-chessboard";
 
 // ── Modal de Replay ───────────────────────────────────────────────────────────
@@ -27,9 +27,7 @@ import { Chessboard } from "react-chessboard";
 const GameReplayModal = ({ moves, fenHistory, onClose }) => {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying]   = useState(false);
-  const [boardWidth, setBoardWidth] = useState(400);
-  const intervalRef   = useRef(null);
-  const boardAreaRef  = useRef(null); // ref al área del tablero para medir su ancho
+  const intervalRef = useRef(null);
 
   const totalPositions = fenHistory.length;
   const currentFen     = fenHistory[currentIdx] ?? fenHistory[0];
@@ -61,18 +59,6 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
     }
     return () => clearInterval(intervalRef.current);
   }, [isPlaying, totalPositions]);
-
-  // Medir el ancho disponible para el tablero y mantenerlo actualizado
-  useLayoutEffect(() => {
-    if (!boardAreaRef.current) return;
-    const ro = new ResizeObserver(([entry]) => {
-      // Restamos el padding lateral (16px * 2) y dejamos un margen
-      const available = entry.contentRect.width - 32;
-      setBoardWidth(Math.min(460, Math.max(180, available)));
-    });
-    ro.observe(boardAreaRef.current);
-    return () => ro.disconnect();
-  }, []);
 
   // Navegación con teclado
   useEffect(() => {
@@ -117,7 +103,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
         <div className="replay-body">
 
           {/* Tablero de solo lectura */}
-          <div className="replay-board-wrap" ref={boardAreaRef}>
+          <div className="replay-board-wrap">
             {currentMove && (
               <div className="replay-move-badge">
                 <span className={`replay-color-dot ${currentMove.color}`} />
@@ -130,17 +116,24 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
               </div>
             )}
 
-            <Chessboard
-              options={{
-                position:              currentFen,
-                allowDragging:         false,
-                showNotation:          true,
-                darkSquareStyle:       { backgroundColor: "#4a7c59" },
-                lightSquareStyle:      { backgroundColor: "#f0d9b5" },
-                animationDurationInMs: 200,
-                boardWidth:            boardWidth,
-              }}
-            />
+            {/*
+              El div exterior limita el ancho del tablero.
+              react-chessboard v5 toma el 100% del padre, así que
+              controlamos el tamaño desde aquí, no desde las props.
+              "min(420px, 100%)" → máximo 420px, pero respeta pantallas pequeñas.
+            */}
+            <div className="replay-board-inner">
+              <Chessboard
+                options={{
+                  position:              currentFen,
+                  allowDragging:         false,
+                  showNotation:          true,
+                  darkSquareStyle:       { backgroundColor: "#4a7c59" },
+                  lightSquareStyle:      { backgroundColor: "#f0d9b5" },
+                  animationDurationInMs: 200,
+                }}
+              />
+            </div>
 
             {/* Controles */}
             <div className="replay-controls">
@@ -201,7 +194,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
 
 // ── Componente MoveHistory ────────────────────────────────────────────────────
 
-const MoveHistory = ({ moves = [], fenHistory = [] }) => {
+const MoveHistory = ({ moves = [], fenHistory = [], viewIdx = null, onNavigate }) => {
   const [showReplay, setShowReplay] = useState(false);
   const listRef = useRef(null); // ref al contenedor de la lista, NO a un elemento dentro
 
@@ -245,15 +238,29 @@ const MoveHistory = ({ moves = [], fenHistory = [] }) => {
           <div className="mh-empty">La partida no ha comenzado</div>
         ) : (
           <div className="mh-list" ref={listRef}>
-            {pairs.map((pair) => (
-              <div key={pair.number} className="move-pair">
-                <span className="move-num">{pair.number}.</span>
-                <span className="move-cell move-white">{pair.white.san}</span>
-                <span className="move-cell move-black">
-                  {pair.black ? pair.black.san : "..."}
-                </span>
-              </div>
-            ))}
+            {pairs.map((pair, pairIdx) => {
+              const whiteNav = pairIdx * 2 + 1; // índice en fenHistory
+              const blackNav = pairIdx * 2 + 2;
+              return (
+                <div key={pair.number} className="move-pair">
+                  <span className="move-num">{pair.number}.</span>
+                  <span
+                    className={`move-cell move-white ${viewIdx === whiteNav ? "move-active" : ""}`}
+                    onClick={() => onNavigate?.(whiteNav)}
+                    title={`Ver jugada ${pair.number} blancas`}
+                  >
+                    {pair.white.san}
+                  </span>
+                  <span
+                    className={`move-cell move-black ${viewIdx === blackNav ? "move-active" : ""} ${!pair.black ? "move-cell-empty" : ""}`}
+                    onClick={() => pair.black && onNavigate?.(blackNav)}
+                    title={pair.black ? `Ver jugada ${pair.number} negras` : undefined}
+                  >
+                    {pair.black ? pair.black.san : "..."}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 

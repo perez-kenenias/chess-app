@@ -777,7 +777,7 @@ body {
   flex: 1;
 }
 
-/* Zona del tablero */
+/* Zona del tablero — scrollable si la ventana es muy pequeña */
 .replay-board-wrap {
   flex: 1;
   padding: 16px 16px 12px;
@@ -786,6 +786,15 @@ body {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  overflow-y: auto;
+}
+
+/* Contenedor que limita el tamaño del tablero.
+   react-chessboard v5 toma el 100% del padre, así que
+   controlamos el ancho máximo desde aquí. */
+.replay-board-inner {
+  width: min(420px, 100%);
+  flex-shrink: 0;
 }
 
 .replay-move-badge {
@@ -841,7 +850,7 @@ body {
 /* Barra de progreso */
 .replay-progress-bar {
   width: 100%;
-  max-width: 460px;
+  max-width: 420px;
   height: 3px;
   background: var(--border);
   border-radius: 2px;
@@ -914,6 +923,228 @@ body {
 @media (max-width: 600px) {
   .replay-movelist { display: none; }
 }
+
+/* ══════════════════════════════════════════
+   BARRA DE MODO REVISIÓN (Board.jsx)
+   ══════════════════════════════════════════ */
+
+.review-mode-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  background: rgba(201, 168, 76, 0.13);
+  border-bottom: 1px solid var(--gold-border);
+  text-align: center;
+  font-size: 11px;
+  color: var(--gold);
+  padding: 5px 8px;
+  z-index: 20;
+  letter-spacing: 0.02em;
+}
+
+
+/* ══════════════════════════════════════════
+   FLECHAS DE NAVEGACIÓN (App.jsx)
+   ══════════════════════════════════════════ */
+
+.nav-arrows {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 0 4px;
+}
+
+.nav-btn {
+  width: 34px; height: 34px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
+
+.nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.nav-badge {
+  font-size: 10px;
+  color: var(--text-2);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  padding: 2px 12px;
+  border-radius: 20px;
+  min-width: 90px;
+  text-align: center;
+}
+
+.nav-badge-live {
+  color: var(--success);
+  background: rgba(74, 222, 128, 0.07);
+  border-color: rgba(74, 222, 128, 0.25);
+}
+
+
+/* ══════════════════════════════════════════
+   RELOJ DE AJEDREZ (ChessClock.jsx)
+   ══════════════════════════════════════════ */
+
+.chess-clock {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.clock-face {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s, border-left 0.2s;
+}
+
+.clock-face:last-child { border-bottom: none; }
+
+.clock-face.clock-active {
+  background: var(--elevated);
+  border-left: 3px solid var(--gold);
+  padding-left: 11px;
+}
+
+.clock-face.clock-low .clock-time {
+  color: var(--danger) !important;
+  animation: pulse 0.5s infinite;
+}
+
+.clock-label {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.clock-time {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* ── Selector de tiempo en ControlPanel ── */
+
+.clock-opts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.clock-opt-btn {
+  padding: 5px 4px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.clock-opt-btn:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--gold-border);
+  color: var(--text);
+}
+
+.clock-opt-active {
+  background: var(--gold-dim);
+  border-color: var(--gold);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.clock-opt-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+
+/* ══════════════════════════════════════════
+   ESTRATEGIA DEL RIVAL (MoveSuggestions)
+   ══════════════════════════════════════════ */
+
+/* Banner con el plan global del rival */
+.rival-context {
+  padding: 7px 10px;
+  background: rgba(251, 146, 60, 0.07);
+  border: 1px solid rgba(251, 146, 60, 0.2);
+  border-radius: 7px;
+  font-size: 11px;
+  color: #fb923c;
+  line-height: 1.4;
+}
+
+.rival-context-label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Respuesta del rival en cada tarjeta */
+.suggestion-opponent {
+  font-size: 10px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.07);
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 4px;
+  padding: 3px 7px;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+
+/* ══════════════════════════════════════════
+   TIP DE ENTRENAMIENTO (MoveSuggestions)
+   ══════════════════════════════════════════ */
+
+.training-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 10px;
+  background: rgba(96, 165, 250, 0.06);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--info);
+  line-height: 1.5;
+}
+
+.training-tip-icon { flex-shrink: 0; font-size: 13px; }
+
+
+/* ══════════════════════════════════════════
+   MOVE-CELL ACTIVO EN HISTORIAL
+   ══════════════════════════════════════════ */
+
+.move-cell.move-active {
+  background: var(--gold-dim) !important;
+  border-radius: 4px;
+  color: var(--gold) !important;
+  font-weight: 600;
+}
+
+.move-cell-empty { cursor: default !important; }
+.move-cell-empty:hover { background: transparent !important; }
+
 
 /* ── Responsive para pantallas pequeñas ── */
 @media (max-width: 820px) {

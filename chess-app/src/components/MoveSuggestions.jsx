@@ -1,23 +1,17 @@
 /**
- * MoveSuggestions.jsx — Panel de sugerencias para principiantes
+ * MoveSuggestions.jsx — Panel de sugerencias con análisis del rival y tips
  *
  * ¿Qué hace?
- * Cuando es el turno del jugador, consulta al backend las 3 mejores jugadas
- * y las muestra con una explicación en lenguaje sencillo.
- *
- * Cada sugerencia incluye:
- *   - La jugada en notación algebraica (e4, Nf3, O-O...)
- *   - Un ícono de la pieza que se mueve
- *   - Una explicación táctica para principiantes
- *   - Un indicador de qué tan buena es la jugada (+0.5, +1.2...)
- *   - Al pasar el mouse, resalta esa jugada en el tablero
+ * 1. Muestra las 3 mejores jugadas para el jugador con explicación táctica
+ * 2. Muestra la estrategia actual del rival ("¿Qué busca el rival?")
+ * 3. Por cada jugada, muestra la posible respuesta del rival
+ * 4. Tips de entrenamiento para mejorar de amateur a avanzado
  *
  * Props:
  *   fen          {string}   — posición actual del tablero
  *   playerColor  {string}   — "white" o "black"
  *   gameStatus   {object}   — { turn, gameOver, isThinking }
  *   onHighlight  {Function} — callback para resaltar jugada en el tablero
- *                             recibe { from_square, to_square } o null
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -35,70 +29,45 @@ const PIECE_ICONS = {
   k: { white: "♔", black: "♚" },
 };
 
-// ── Generador de explicaciones para principiantes ────────────────────────────
+// ── Explicación de la jugada del jugador ─────────────────────────────────────
 
-/**
- * getMoveExplanation — convierte datos técnicos de una jugada en una
- * frase comprensible para alguien que está aprendiendo ajedrez.
- *
- * Usa heurísticas basadas en:
- *   - Tipo de pieza (peón, caballo, alfil, torre, dama, rey)
- *   - Si es captura (gana material)
- *   - Si da jaque
- *   - Si es enroque
- *   - Si la casilla destino controla el centro
- *   - Si la pieza se está desarrollando (saliendo por primera vez)
- */
 const getMoveExplanation = (move, playerColor) => {
   const { piece, san, from_square, to_square, is_capture, is_check } = move;
-
-  // Nombres de piezas en español
   const PIECES = { p: "Peón", n: "Caballo", b: "Alfil", r: "Torre", q: "Dama", k: "Rey" };
   const pieceName = PIECES[piece] || "Pieza";
 
-  // Enroque (corto: O-O, largo: O-O-O)
   if (san === "O-O")   return "Enroque corto — el Rey se protege detrás de las torres";
   if (san === "O-O-O") return "Enroque largo — el Rey se pone a salvo y la Torre entra al juego";
-
-  // Jaque
   if (is_check) return `${pieceName} da jaque — el Rey rival debe reaccionar`;
-
-  // Captura
   if (is_capture) return `${pieceName} captura en ${to_square} — ganas material`;
 
-  // Control del centro (las 4 casillas centrales son clave en ajedrez)
   const CENTER = ["e4", "d4", "e5", "d5"];
   if (CENTER.includes(to_square)) {
-    if (piece === "p") return `Peón al centro — controla casillas clave desde el inicio`;
+    if (piece === "p") return "Peón al centro — controla casillas clave desde el inicio";
     return `${pieceName} a ${to_square} — domina el centro del tablero`;
   }
 
-  // Casillas extendidas del centro (útiles en aperturas)
   const EXT_CENTER = ["c4", "f4", "c5", "f5", "e3", "d3", "e6", "d6"];
   if (EXT_CENTER.includes(to_square) && piece === "p") {
     return "Peón avanza — gana espacio y prepara el desarrollo";
   }
 
-  // Desarrollo de caballo desde posición inicial
   const KNIGHT_START = ["g1", "b1", "g8", "b8"];
   if (piece === "n" && KNIGHT_START.includes(from_square)) {
-    return `Desarrolla el Caballo — activa una pieza hacia el centro`;
+    return "Desarrolla el Caballo — activa una pieza hacia el centro";
   }
 
-  // Desarrollo de alfil desde posición inicial
   const BISHOP_START = ["c1", "f1", "c8", "f8"];
   if (piece === "b" && BISHOP_START.includes(from_square)) {
-    return `Desarrolla el Alfil — abre diagonales importantes`;
+    return "Desarrolla el Alfil — abre diagonales importantes";
   }
 
-  // Torre entra al centro o a fila abierta
   if (piece === "r") {
     const rankTo = to_square[1];
     if (rankTo === "1" || rankTo === "8") return "Torre a fila abierta — más presión en el endgame";
-    return `Torre activa — coordina con otras piezas`;
+    return "Torre activa — coordina con otras piezas";
   }
 
-  // Dama
   if (piece === "q") {
     if (from_square === "d1" || from_square === "d8") {
       return "Dama sale — cuidado con sacarla muy pronto, puede ser atacada";
@@ -106,23 +75,109 @@ const getMoveExplanation = (move, playerColor) => {
     return `Dama a ${to_square} — crea amenazas múltiples`;
   }
 
-  // Rey (movimiento normal, no enroque)
-  if (piece === "k") return `Rey se mueve — asegúrate de que esté protegido`;
-
-  // Caso genérico para peones
+  if (piece === "k") return "Rey se mueve — asegúrate de que esté protegido";
   if (piece === "p") return `Peón avanza a ${to_square} — prepara el terreno`;
-
   return `${pieceName} a ${to_square}`;
 };
 
-// ── Formateador de puntuación ────────────────────────────────────────────────
+// ── Estrategia actual del rival ──────────────────────────────────────────────
 
 /**
- * formatScore — convierte centipawns en texto legible.
- *   +35  → "+0.35"
- *   -120 → "-1.20"
- *   null + mate_in=3 → "Mate en 3"
+ * getOpponentPlan — analiza la posición actual para explicar qué busca el rival.
+ * Se llama una vez por posición, no por jugada.
  */
+const getOpponentPlan = (fen, opponentColor) => {
+  try {
+    const chess = new Chess(fen);
+    const oppColor = opponentColor === "white" ? "w" : "b";
+    const fullmove = parseInt(fen.split(" ")[5]) || 1;
+    const backRank = oppColor === "w" ? "1" : "8";
+    const knightStarts = oppColor === "w" ? ["b1", "g1"] : ["b8", "g8"];
+    const bishopStarts = oppColor === "w" ? ["c1", "f1"] : ["c8", "f8"];
+
+    let developedMinors = 0;
+    let centerPawns = 0;
+    let activeQueen = false;
+
+    for (const rank of ["1","2","3","4","5","6","7","8"]) {
+      for (const file of ["a","b","c","d","e","f","g","h"]) {
+        const sq = `${file}${rank}`;
+        const p = chess.get(sq);
+        if (!p || p.color !== oppColor) continue;
+        if (p.type === "n" && !knightStarts.includes(sq)) developedMinors++;
+        if (p.type === "b" && !bishopStarts.includes(sq)) developedMinors++;
+        if (p.type === "p" && ["d","e"].includes(file) && (rank === "4" || rank === "5")) centerPawns++;
+        if (p.type === "q" && sq[1] !== backRank) activeQueen = true;
+      }
+    }
+
+    if (fullmove <= 8) {
+      if (centerPawns >= 2) return "Rival domina el centro con sus peones — busca espacio para sus piezas";
+      if (developedMinors >= 3) return "Rival tiene piezas activas — prepara un ataque coordinado";
+      return "Rival completa su apertura — desarrolla sus piezas hacia el centro";
+    }
+    if (fullmove <= 22) {
+      if (activeQueen) return "Rival tiene la Dama en posición agresiva — busca amenazas múltiples";
+      if (developedMinors >= 3) return "Rival busca debilitar tu estructura de peones o crear un ataque";
+      return "Rival busca activar todas sus piezas antes de atacar";
+    }
+    return "Rival activa su Rey y avanza peones — en el final cada jugada cuenta";
+  } catch {
+    return null;
+  }
+};
+
+// ── Posible respuesta del rival tras cada jugada sugerida ───────────────────
+
+/**
+ * getOpponentResponse — analiza qué puede hacer el rival inmediatamente
+ * después de que el jugador haga la jugada sugerida (usa fen_after).
+ */
+const getOpponentResponse = (move) => {
+  try {
+    const afterChess = new Chess(move.fen_after);
+    if (afterChess.isCheckmate()) return "¡Es jaque mate — la partida termina aquí!";
+
+    const oppMoves = afterChess.moves({ verbose: true });
+    const checks   = oppMoves.filter(m => m.san.includes("+"));
+    const captures = oppMoves.filter(m => m.captured);
+
+    if (checks.length >= 2) return `Rival tiene ${checks.length} jaques posibles — mantente alerta`;
+    if (checks.length === 1) return `Rival puede responder con jaque: ${checks[0].san}`;
+    if (captures.length >= 3) return "Rival tiene múltiples capturas disponibles — vigila tu material";
+    if (captures.length === 1) {
+      const pieceNames = { p: "peón", n: "caballo", b: "alfil", r: "torre", q: "dama" };
+      const name = pieceNames[captures[0].captured] ?? "pieza";
+      return `Rival podría capturar tu ${name} en ${captures[0].to}`;
+    }
+    return "Rival buscará la mejor continuación posicional";
+  } catch {
+    return null;
+  }
+};
+
+// ── Tips de entrenamiento para progresar ─────────────────────────────────────
+
+const TRAINING_TIPS = [
+  "En cada turno pregúntate: ¿Mejoro mis piezas? ¿Amenazo algo? ¿Debilito mi posición?",
+  "Antes de mover, busca capturas, jaques y amenazas del rival. No muevas sin razón.",
+  "Piezas activas > ventaja material. Una pieza mal colocada es un peso muerto.",
+  "Controla el centro con peones y piezas desde el inicio — el centro da movilidad.",
+  "Enroca pronto. Un Rey seguro te permite atacar con libertad sin preocuparte.",
+  "Las torres son más potentes en columnas abiertas o semabiertas. Búscalas.",
+  "No muevas la misma pieza dos veces en la apertura sin razón táctica concreta.",
+  "El Rey es una pieza fuerte en el final — acércalo al centro de la acción.",
+  "Coordina tus piezas: un ataque con varias piezas es más difícil de defender.",
+  "Cada peón pasado es una amenaza de coronación que el rival debe atender.",
+];
+
+const getTrainingTip = (fen) => {
+  const fullmove = parseInt(fen.split(" ")[5]) || 1;
+  return TRAINING_TIPS[fullmove % TRAINING_TIPS.length];
+};
+
+// ── Formateadores ────────────────────────────────────────────────────────────
+
 const formatScore = (score, mate_in) => {
   if (mate_in !== null && mate_in !== undefined) {
     return mate_in > 0 ? `Mate en ${mate_in}` : `Mate en ${Math.abs(mate_in)}`;
@@ -132,18 +187,14 @@ const formatScore = (score, mate_in) => {
   return score >= 0 ? `+${pawns}` : `-${pawns}`;
 };
 
-/**
- * scoreColor — color del texto según qué tan buena es la jugada.
- * Verde = ventaja, rojo = desventaja, gris = equilibrio.
- */
 const scoreColor = (score, mate_in) => {
   if (mate_in !== null && mate_in !== undefined) return mate_in > 0 ? "#4ade80" : "#f87171";
   if (score === null) return "#888";
-  if (score > 80)  return "#4ade80";  // verde: ventaja clara
-  if (score > 20)  return "#a3e635";  // verde claro
-  if (score > -20) return "#888";     // equilibrio
-  if (score > -80) return "#fb923c";  // naranja: ligera desventaja
-  return "#f87171";                   // rojo: desventaja clara
+  if (score > 80)  return "#4ade80";
+  if (score > 20)  return "#a3e635";
+  if (score > -20) return "#888";
+  if (score > -80) return "#fb923c";
+  return "#f87171";
 };
 
 // ── Componente principal ─────────────────────────────────────────────────────
@@ -151,18 +202,16 @@ const scoreColor = (score, mate_in) => {
 const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState(null);   // mensaje de error visible
-  const [expanded, setExpanded]       = useState(true);   // panel abierto/cerrado
-  const abortRef = useRef(false); // flag de cancelación para peticiones en vuelo
+  const [error, setError]             = useState(null);
+  const [expanded, setExpanded]       = useState(true);
+  const abortRef = useRef(false);
 
   const { turn, gameOver, isThinking } = gameStatus || {};
   const myTurn = playerColor === "white" ? "w" : "b";
   const isMyTurn = turn === myTurn && !gameOver && !isThinking;
 
-  /**
-   * fetchSuggestions — pide las mejores jugadas al backend.
-   * Se llama desde el useEffect y desde el botón "Reintentar".
-   */
+  const opponentColor = playerColor === "white" ? "black" : "white";
+
   const fetchSuggestions = (currentFen) => {
     abortRef.current = false;
     const cancelled = () => abortRef.current;
@@ -195,26 +244,23 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
       });
   };
 
-  /**
-   * Cada vez que cambia el FEN y es el turno del jugador,
-   * pedimos las mejores jugadas al backend.
-   */
   useEffect(() => {
     if (!isMyTurn || !fen) {
-      abortRef.current = true; // cancelar cualquier petición en vuelo
+      abortRef.current = true;
       setSuggestions([]);
       setError(null);
       return;
     }
-
     fetchSuggestions(fen);
-
     return () => { abortRef.current = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fen, isMyTurn]);
 
-  // Si no es el turno del jugador y no hay nada que mostrar, ocultar el panel
   if (!isMyTurn && suggestions.length === 0 && !loading && !error) return null;
+
+  // Calculamos el plan del rival y el tip de entrenamiento una sola vez
+  const rivalPlan  = !loading && suggestions.length > 0 ? getOpponentPlan(fen, opponentColor) : null;
+  const trainingTip = !loading && suggestions.length > 0 ? getTrainingTip(fen) : null;
 
   return (
     <div className="suggestions-panel">
@@ -231,7 +277,7 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
       {expanded && (
         <div className="suggestions-body">
 
-          {/* Estado de carga */}
+          {/* Cargando */}
           {loading && (
             <div className="suggestions-loading">
               <div className="thinking-spinner" style={{ width: 16, height: 16, borderWidth: 1.5 }} />
@@ -239,27 +285,32 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
             </div>
           )}
 
-          {/* Estado de error */}
+          {/* Error */}
           {!loading && error && (
             <div className="suggestions-error">
               <span className="suggestions-error-icon">⚠</span>
               <span className="suggestions-error-msg">{error}</span>
-              <button
-                className="suggestions-retry"
-                onClick={() => fetchSuggestions(fen)}
-              >
+              <button className="suggestions-retry" onClick={() => fetchSuggestions(fen)}>
                 Reintentar
               </button>
             </div>
           )}
 
+          {/* Banner: ¿Qué busca el rival? */}
+          {rivalPlan && (
+            <div className="rival-context">
+              <span className="rival-context-label">♟ Rival busca:</span> {rivalPlan}
+            </div>
+          )}
+
           {/* Lista de sugerencias */}
           {!loading && suggestions.map((move, idx) => {
-            const icon = PIECE_ICONS[move.piece]?.[playerColor] ?? "♙";
+            const icon        = PIECE_ICONS[move.piece]?.[playerColor] ?? "♙";
             const explanation = getMoveExplanation(move, playerColor);
             const scoreText   = formatScore(move.score, move.mate_in);
             const color       = scoreColor(move.score, move.mate_in);
-            const rank = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+            const rank        = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+            const oppResponse = getOpponentResponse(move);
 
             return (
               <div
@@ -271,7 +322,6 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
                 {/* Fila superior: rango + jugada + score */}
                 <div className="suggestion-top">
                   <span className="suggestion-rank">{rank}</span>
-
                   <div className="suggestion-move">
                     <span className="suggestion-piece">{icon}</span>
                     <span className="suggestion-san">{move.san}</span>
@@ -279,16 +329,22 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
                       {move.from_square} → {move.to_square}
                     </span>
                   </div>
-
                   <span className="suggestion-score" style={{ color }}>
                     {scoreText}
                   </span>
                 </div>
 
-                {/* Explicación táctica */}
+                {/* Explicación táctica de la jugada */}
                 <div className="suggestion-explanation">{explanation}</div>
 
-                {/* Badges de propiedades especiales */}
+                {/* Posible respuesta del rival */}
+                {oppResponse && (
+                  <div className="suggestion-opponent">
+                    ⚡ {oppResponse}
+                  </div>
+                )}
+
+                {/* Badges */}
                 <div className="suggestion-badges">
                   {move.is_capture && <span className="badge badge-capture">⚔ Captura</span>}
                   {move.is_check   && <span className="badge badge-check">+ Jaque</span>}
@@ -299,12 +355,20 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
             );
           })}
 
-          {/* Mensaje cuando no hay sugerencias y no hay error */}
+          {/* Sin sugerencias */}
           {!loading && !error && suggestions.length === 0 && isMyTurn && (
             <div className="suggestions-empty">No hay sugerencias disponibles</div>
           )}
 
-          {/* Nota educativa al pie */}
+          {/* Tip de entrenamiento */}
+          {trainingTip && (
+            <div className="training-tip">
+              <span className="training-tip-icon">📈</span>
+              <span>{trainingTip}</span>
+            </div>
+          )}
+
+          {/* Nota de hover */}
           {!loading && suggestions.length > 0 && (
             <p className="suggestions-note">
               Pasa el cursor sobre una jugada para verla en el tablero.

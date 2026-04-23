@@ -47,6 +47,7 @@ const Board = ({
   skillLevel  = 10,
   settings    = {},
   hintMove    = null,
+  reviewFen   = null,  // FEN histórico para modo revisión (null = posición viva)
 }) => {
 
   // ── Estado local ────────────────────────────────────────────────────────────
@@ -491,8 +492,15 @@ const Board = ({
   return (
     <div ref={boardRef} style={{ position: "relative", width: "100%" }}>
 
-      {/* Overlay de "pensando" */}
-      {isThinking && (
+      {/* Barra de modo revisión */}
+      {reviewFen && (
+        <div className="review-mode-bar">
+          Modo revisión — usa ◀ ▶ para navegar · ⏭ para volver al juego
+        </div>
+      )}
+
+      {/* Overlay de "pensando" (solo en modo vivo) */}
+      {isThinking && !reviewFen && (
         <div className="thinking-overlay">
           <div className="thinking-spinner" />
           <span>Stockfish pensando...</span>
@@ -537,12 +545,12 @@ const Board = ({
       */}
       <Chessboard
         options={{
-          position:              game.fen(),
+          position:              reviewFen ?? game.fen(),
           boardOrientation:      playerColor,
-          onPieceDrop:           onDrop,
-          onSquareClick:         onSquareClick,
-          canDragPiece:          canDragPiece,
-          squareStyles:          buildSquareStyles(),
+          onPieceDrop:           reviewFen ? undefined : onDrop,
+          onSquareClick:         reviewFen ? undefined : onSquareClick,
+          canDragPiece:          reviewFen ? () => false : canDragPiece,
+          squareStyles:          reviewFen ? {} : buildSquareStyles(),
           darkSquareStyle:       { backgroundColor: "#4a7c59" },
           lightSquareStyle:      { backgroundColor: "#f0d9b5" },
           showNotation:          settings.showCoordinates ?? true,
@@ -550,7 +558,7 @@ const Board = ({
         }}
       />
 
-      {renderSquareLabels()}
+      {!reviewFen && renderSquareLabels()}
     </div>
   );
 };

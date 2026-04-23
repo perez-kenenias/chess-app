@@ -3,21 +3,18 @@
  *
  * Responsabilidades:
  *   1. Guardar el estado global: FEN, historial, nivel, color, evaluación
- *   2. Conectar todos los componentes pasando datos (props) hacia abajo
- *      y recibiendo eventos (callbacks) hacia arriba
- *
- * Estado nuevo respecto a la versión original:
- *   - fenHistory: array con el FEN de cada posición de la partida,
- *     usado por MoveHistory para el replay de la partida
- *   - highlightMove: jugada resaltada desde el panel de sugerencias
+ *   2. Navegación del historial (viewIdx) para revisar jugadas pasadas
+ *   3. Reloj de ajedrez con tiempo seleccionable
+ *   4. Conectar todos los componentes pasando datos y callbacks
  */
 
-import { useState, useCallback, useEffect } from "react";
-import Board          from "./components/Board";
-import ControlPanel   from "./components/ControlPanel";
-import AdvantageBar   from "./components/AdvantageBar";
-import MoveHistory    from "./components/MoveHistory";
+import { useState, useCallback, useEffect, useRef } from "react";
+import Board           from "./components/Board";
+import ControlPanel    from "./components/ControlPanel";
+import AdvantageBar    from "./components/AdvantageBar";
+import MoveHistory     from "./components/MoveHistory";
 import MoveSuggestions from "./components/MoveSuggestions";
+import ChessClock      from "./components/ChessClock";
 import { checkHealth, getHint } from "./api/chess";
 import "./App.css";
 
@@ -28,7 +25,7 @@ function App() {
   // ── Estado del juego ────────────────────────────────────────────────────────
   const [fen, setFen]               = useState(INITIAL_FEN);
   const [moves, setMoves]           = useState([]);       // [{ san, color }]
-  const [fenHistory, setFenHistory] = useState([INITIAL_FEN]); // FEN tras cada jugada
+  const [fenHistory, setFenHistory] = useState([INITIAL_FEN]);
   const [gameStatus, setGameStatus] = useState({ turn: "w" });
   const [evaluation, setEvaluation] = useState({ score: 0, mateIn: null });
 
@@ -41,11 +38,25 @@ function App() {
     showLastMoveSan:  true,
   });
 
-  // ── UI ───────────────────────────────────────────────────────────────────────
-  const [hintMove, setHintMove]         = useState(null);
-  const [highlightMove, setHighlightMove] = useState(null); // sugerencia en hover
-  const [backendOk, setBackendOk]       = useState(null);
+  // ── Navegación de historial ──────────────────────────────────────────────────
+  // null = posición viva/actual · 0..n = revisando fenHistory[viewIdx]
+  const [viewIdx, setViewIdx] = useState(null);
 
+  // ── Reloj de ajedrez ─────────────────────────────────────────────────────────
+  const [clockMinutes, setClockMinutes] = useState(0); // 0 = sin límite
+  const [whiteTime, setWhiteTime]       = useState(null);
+  const [blackTime, setBlackTime]       = useState(null);
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
+  const [hintMove, setHintMove]           = useState(null);
+  const [highlightMove, setHighlightMove] = useState(null);
+  const [backendOk, setBackendOk]         = useState(null);
+
+  // ── Refs para el tick del reloj (sin stale closures) ───────────────────────
+  const gameStatusRef = useRef(gameStatus);
+  useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
+  const viewIdxRef = useRef(viewIdx);
+  useEffect(() => { viewIdxRef.current = viewIdx; }, [viewIdx]);
 
   // ── Verificar backend al iniciar ────────────────────────────────────────────
   useEffect(() => {
@@ -54,6 +65,23 @@ function App() {
       .catch(() => setBackendOk(false));
   }, []);
 
+  // ── Tick del reloj cada segundo ─────────────────────────────────────────────
+  // El intervalo se crea una sola vez (cuando el modo pasa de unlimited → timed).
+  // Dentro del callback leemos refs para evitar stale closures.
+  useEffect(() => {
+    if (whiteTime === null) return;
+    const id = setInterval(() => {
+      const { turn, gameOver, isThinking } = gameStatusRef.current;
+      if (gameOver || isThinking || viewIdxRef.current !== null) return;
+      if (turn === "w") {
+        setWhiteTime(t => Math.max(0, t - 1));
+      } else {
+        setBlackTime(t => Math.max(0, t - 1));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whiteTime !== null]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -61,12 +89,6 @@ function App() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  /**
-   * handleMoveMade — se llama desde Board.jsx cuando se hace una jugada.
-   * Ahora también guarda el FEN resultante en fenHistory para el replay.
-   *
-   * currentFen: el FEN DESPUÉS de la jugada (Board lo pasa como tercer argumento)
-   */
   const handleMoveMade = useCallback(({ san, color, fen: moveFen }) => {
     setMoves((prev) => [...prev, { san, color }]);
     if (moveFen) {
@@ -74,12 +96,9 @@ function App() {
     }
     setHintMove(null);
     setHighlightMove(null);
+    setViewIdx(null); // jugada nueva → volver a posición viva
   }, []);
 
-  /**
-   * handleFenChange — actualiza el FEN cuando Board nos avisa de un cambio.
-   * También lo sincronizamos con fenHistory si la jugada ya fue registrada.
-   */
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
   }, []);
@@ -92,7 +111,12 @@ function App() {
     setEvaluation({ score: 0, mateIn: null });
     setHintMove(null);
     setHighlightMove(null);
-  }, []);
+    setViewIdx(null);
+    if (clockMinutes > 0) {
+      setWhiteTime(clockMinutes * 60);
+      setBlackTime(clockMinutes * 60);
+    }
+  }, [clockMinutes]);
 
   const handleColorChange = useCallback((color) => {
     setPlayerColor(color);
@@ -104,7 +128,23 @@ function App() {
       setEvaluation({ score: 0, mateIn: null });
       setHintMove(null);
       setHighlightMove(null);
+      setViewIdx(null);
+      if (clockMinutes > 0) {
+        setWhiteTime(clockMinutes * 60);
+        setBlackTime(clockMinutes * 60);
+      }
     }, 0);
+  }, [clockMinutes]);
+
+  const handleClockChange = useCallback((minutes) => {
+    setClockMinutes(minutes);
+    if (minutes === 0) {
+      setWhiteTime(null);
+      setBlackTime(null);
+    } else {
+      setWhiteTime(minutes * 60);
+      setBlackTime(minutes * 60);
+    }
   }, []);
 
   const handleHint = useCallback(async () => {
@@ -117,9 +157,41 @@ function App() {
     }
   }, [fen, gameStatus]);
 
-  // La jugada activa en el tablero es la pista o la sugerencia en hover
-  const activeHint = hintMove ?? highlightMove;
+  // ── Navegación del historial ─────────────────────────────────────────────────
+
+  const handleNavPrev = useCallback(() => {
+    setViewIdx(prev => {
+      if (prev === 0) return 0;
+      if (prev === null) return Math.max(0, fenHistory.length - 2);
+      return prev - 1;
+    });
+  }, [fenHistory.length]);
+
+  const handleNavNext = useCallback(() => {
+    setViewIdx(prev => {
+      if (prev === null) return null;
+      if (prev >= fenHistory.length - 1) return null; // último → volver a vivo
+      return prev + 1;
+    });
+  }, [fenHistory.length]);
+
+  // Teclado: ← → para navegar (solo cuando hay jugadas y no se está escribiendo)
+  useEffect(() => {
+    if (moves.length === 0) return;
+    const onKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key === "ArrowLeft")  { e.preventDefault(); handleNavPrev(); }
+      if (e.key === "ArrowRight") { e.preventDefault(); handleNavNext(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleNavPrev, handleNavNext, moves.length]);
+
+  // ── Derivados ────────────────────────────────────────────────────────────────
+  const activeHint  = hintMove ?? highlightMove;
   const lastMoveSan = moves.length > 0 ? moves[moves.length - 1].san : null;
+  const reviewFen   = viewIdx !== null ? fenHistory[viewIdx] : null;
+  const activeColor = gameStatus.turn === "w" ? "white" : "black";
 
 
   // ── Pantallas de carga y error ───────────────────────────────────────────────
@@ -170,7 +242,7 @@ function App() {
           height={640}
         />
 
-        {/* COLUMNA 2: Tablero + sugerencias debajo */}
+        {/* COLUMNA 2: Tablero + flechas de navegación + sugerencias */}
         <div className="board-col">
           <Board
             fen={fen}
@@ -182,23 +254,71 @@ function App() {
             skillLevel={skillLevel}
             settings={settings}
             hintMove={activeHint}
+            reviewFen={reviewFen}
           />
 
-          {/*
-            Panel de sugerencias debajo del tablero.
-            Muestra las 3 mejores jugadas con explicaciones para principiantes.
-            Al pasar el cursor sobre una sugerencia, se resalta en el tablero.
-          */}
-          <MoveSuggestions
-            fen={fen}
-            playerColor={playerColor}
-            gameStatus={gameStatus}
-            onHighlight={setHighlightMove}
-          />
+          {/* Flechas de navegación — como chess.com */}
+          {moves.length > 0 && (
+            <div className="nav-arrows">
+              <button
+                className="nav-btn"
+                onClick={() => setViewIdx(0)}
+                disabled={viewIdx === 0}
+                title="Posición inicial"
+              >⏮</button>
+
+              <button
+                className="nav-btn"
+                onClick={handleNavPrev}
+                disabled={viewIdx === 0}
+                title="Jugada anterior (←)"
+              >◀</button>
+
+              {viewIdx !== null ? (
+                <span className="nav-badge">
+                  Revisando {viewIdx}/{fenHistory.length - 1}
+                </span>
+              ) : (
+                <span className="nav-badge nav-badge-live">● En vivo</span>
+              )}
+
+              <button
+                className="nav-btn"
+                onClick={handleNavNext}
+                disabled={viewIdx === null}
+                title="Jugada siguiente (→)"
+              >▶</button>
+
+              <button
+                className="nav-btn"
+                onClick={() => setViewIdx(null)}
+                disabled={viewIdx === null}
+                title="Volver a posición actual"
+              >⏭</button>
+            </div>
+          )}
+
+          {/* Sugerencias solo en modo vivo (no durante revisión) */}
+          {viewIdx === null && (
+            <MoveSuggestions
+              fen={fen}
+              playerColor={playerColor}
+              gameStatus={gameStatus}
+              onHighlight={setHighlightMove}
+            />
+          )}
         </div>
 
-        {/* COLUMNA 3: Panel de control + historial */}
+        {/* COLUMNA 3: Reloj + Panel de control + historial */}
         <div className="right-col">
+
+          <ChessClock
+            whiteTime={whiteTime}
+            blackTime={blackTime}
+            activeColor={activeColor}
+            gameOver={gameStatus.gameOver}
+          />
+
           <ControlPanel
             settings={settings}
             onSettingChange={handleSettingChange}
@@ -211,15 +331,15 @@ function App() {
             gameStatus={gameStatus}
             hintMove={hintMove}
             lastMoveSan={lastMoveSan}
+            clockMinutes={clockMinutes}
+            onClockChange={handleClockChange}
           />
 
-          {/*
-            MoveHistory ahora también recibe fenHistory para poder
-            reproducir la partida completa con el botón ▶ Replay.
-          */}
           <MoveHistory
             moves={moves}
             fenHistory={fenHistory}
+            viewIdx={viewIdx}
+            onNavigate={setViewIdx}
           />
         </div>
 
