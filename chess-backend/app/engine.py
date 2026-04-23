@@ -255,18 +255,16 @@ class ChessEngine:
         if legal_count == 0:
             return []
 
-        # Activar MultiPV para obtener varias líneas
-        engine.configure({"MultiPV": legal_count, "Skill Level": 20})
+        # Configurar nivel máximo para análisis (el MultiPV lo gestiona python-chess
+        # internamente a través del parámetro multipv= de analyse(); configurarlo
+        # también con engine.configure() causa un conflicto y lanza un error).
+        engine.configure({"Skill Level": 20})
 
-        try:
-            info_list = engine.analyse(
-                board,
-                chess.engine.Limit(time=time_limit),
-                multipv=legal_count,
-            )
-        finally:
-            # Restaurar a 1 para que las demás operaciones no se vean afectadas
-            engine.configure({"MultiPV": 1})
+        info_list = engine.analyse(
+            board,
+            chess.engine.Limit(time=time_limit),
+            multipv=legal_count,
+        )
 
         results = []
         for info in info_list:

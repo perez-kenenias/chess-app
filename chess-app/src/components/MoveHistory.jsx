@@ -19,7 +19,7 @@
  *                         fenHistory[i] = posición después de la jugada i-1
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import { Chessboard } from "react-chessboard";
 
 // ── Modal de Replay ───────────────────────────────────────────────────────────
@@ -27,7 +27,9 @@ import { Chessboard } from "react-chessboard";
 const GameReplayModal = ({ moves, fenHistory, onClose }) => {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying]   = useState(false);
-  const intervalRef = useRef(null);
+  const [boardWidth, setBoardWidth] = useState(400);
+  const intervalRef   = useRef(null);
+  const boardAreaRef  = useRef(null); // ref al área del tablero para medir su ancho
 
   const totalPositions = fenHistory.length;
   const currentFen     = fenHistory[currentIdx] ?? fenHistory[0];
@@ -59,6 +61,18 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
     }
     return () => clearInterval(intervalRef.current);
   }, [isPlaying, totalPositions]);
+
+  // Medir el ancho disponible para el tablero y mantenerlo actualizado
+  useLayoutEffect(() => {
+    if (!boardAreaRef.current) return;
+    const ro = new ResizeObserver(([entry]) => {
+      // Restamos el padding lateral (16px * 2) y dejamos un margen
+      const available = entry.contentRect.width - 32;
+      setBoardWidth(Math.min(460, Math.max(180, available)));
+    });
+    ro.observe(boardAreaRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Navegación con teclado
   useEffect(() => {
@@ -103,7 +117,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
         <div className="replay-body">
 
           {/* Tablero de solo lectura */}
-          <div className="replay-board-wrap">
+          <div className="replay-board-wrap" ref={boardAreaRef}>
             {currentMove && (
               <div className="replay-move-badge">
                 <span className={`replay-color-dot ${currentMove.color}`} />
@@ -118,12 +132,13 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
 
             <Chessboard
               options={{
-                position:             currentFen,
-                allowDragging:        false,
-                showNotation:         true,
-                darkSquareStyle:      { backgroundColor: "#4a7c59" },
-                lightSquareStyle:     { backgroundColor: "#f0d9b5" },
+                position:              currentFen,
+                allowDragging:         false,
+                showNotation:          true,
+                darkSquareStyle:       { backgroundColor: "#4a7c59" },
+                lightSquareStyle:      { backgroundColor: "#f0d9b5" },
                 animationDurationInMs: 200,
+                boardWidth:            boardWidth,
               }}
             />
 
@@ -188,10 +203,15 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
 
 const MoveHistory = ({ moves = [], fenHistory = [] }) => {
   const [showReplay, setShowReplay] = useState(false);
-  const bottomRef = useRef(null);
+  const listRef = useRef(null); // ref al contenedor de la lista, NO a un elemento dentro
 
+  // Scroll suave hacia abajo dentro del contenedor cuando se añade una jugada.
+  // Usamos scrollTop en el contenedor (en lugar de scrollIntoView) para que
+  // solo se desplace el panel de historial, no toda la página.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
   }, [moves]);
 
   const pairs = [];
@@ -224,7 +244,7 @@ const MoveHistory = ({ moves = [], fenHistory = [] }) => {
         {moves.length === 0 ? (
           <div className="mh-empty">La partida no ha comenzado</div>
         ) : (
-          <div className="mh-list">
+          <div className="mh-list" ref={listRef}>
             {pairs.map((pair) => (
               <div key={pair.number} className="move-pair">
                 <span className="move-num">{pair.number}.</span>
@@ -234,7 +254,6 @@ const MoveHistory = ({ moves = [], fenHistory = [] }) => {
                 </span>
               </div>
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
 

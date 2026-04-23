@@ -151,50 +151,70 @@ const scoreColor = (score, mate_in) => {
 const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading]         = useState(false);
-  const [expanded, setExpanded]       = useState(true);  // panel abierto/cerrado
-  const abortRef = useRef(null); // para cancelar peticiones anteriores si cambia el FEN
+  const [error, setError]             = useState(null);   // mensaje de error visible
+  const [expanded, setExpanded]       = useState(true);   // panel abierto/cerrado
+  const abortRef = useRef(false); // flag de cancelación para peticiones en vuelo
 
   const { turn, gameOver, isThinking } = gameStatus || {};
   const myTurn = playerColor === "white" ? "w" : "b";
   const isMyTurn = turn === myTurn && !gameOver && !isThinking;
 
   /**
-   * Cada vez que cambia el FEN y es el turno del jugador,
-   * pedimos las mejores jugadas al backend.
-   *
-   * Usamos un flag de cancelación (abortRef) para evitar que
-   * respuestas de peticiones anteriores sobreescriban el estado actual.
+   * fetchSuggestions — pide las mejores jugadas al backend.
+   * Se llama desde el useEffect y desde el botón "Reintentar".
    */
-  useEffect(() => {
-    if (!isMyTurn || !fen) {
-      setSuggestions([]);
-      return;
-    }
-
-    // Cancelar petición anterior si aún estaba en vuelo
+  const fetchSuggestions = (currentFen) => {
     abortRef.current = false;
     const cancelled = () => abortRef.current;
 
     setLoading(true);
     setSuggestions([]);
+    setError(null);
 
-    getTopMoves(fen, 3, 1.5)
+    getTopMoves(currentFen, 3, 1.5)
       .then((res) => {
         if (cancelled()) return;
-        setSuggestions(res?.data?.moves ?? []);
+        const moves = res?.data?.moves ?? [];
+        setSuggestions(moves);
+        if (moves.length === 0) {
+          setError("El backend no devolvió jugadas. Reinicia el servidor y vuelve a intentarlo.");
+        }
       })
-      .catch(() => {
-        if (!cancelled()) setSuggestions([]);
+      .catch((err) => {
+        if (cancelled()) return;
+        const detail = err?.response?.data?.detail ?? err?.message ?? "";
+        if (err?.response?.status === 404) {
+          setError("Endpoint /api/top-moves no encontrado. Reinicia el servidor backend.");
+        } else {
+          setError(`Error al obtener sugerencias${detail ? ": " + detail : ". Comprueba que el servidor esté corriendo."}`);
+        }
+        setSuggestions([]);
       })
       .finally(() => {
         if (!cancelled()) setLoading(false);
       });
+  };
+
+  /**
+   * Cada vez que cambia el FEN y es el turno del jugador,
+   * pedimos las mejores jugadas al backend.
+   */
+  useEffect(() => {
+    if (!isMyTurn || !fen) {
+      abortRef.current = true; // cancelar cualquier petición en vuelo
+      setSuggestions([]);
+      setError(null);
+      return;
+    }
+
+    fetchSuggestions(fen);
 
     return () => { abortRef.current = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fen, isMyTurn]);
 
-  // Si no es el turno del jugador o la partida terminó, ocultar el panel
-  if (!isMyTurn && suggestions.length === 0 && !loading) return null;
+  // Si no es el turno del jugador y no hay nada que mostrar, ocultar el panel
+  if (!isMyTurn && suggestions.length === 0 && !loading && !error) return null;
 
   return (
     <div className="suggestions-panel">
@@ -216,6 +236,20 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
             <div className="suggestions-loading">
               <div className="thinking-spinner" style={{ width: 16, height: 16, borderWidth: 1.5 }} />
               <span>Analizando posición…</span>
+            </div>
+          )}
+
+          {/* Estado de error */}
+          {!loading && error && (
+            <div className="suggestions-error">
+              <span className="suggestions-error-icon">⚠</span>
+              <span className="suggestions-error-msg">{error}</span>
+              <button
+                className="suggestions-retry"
+                onClick={() => fetchSuggestions(fen)}
+              >
+                Reintentar
+              </button>
             </div>
           )}
 
@@ -265,8 +299,8 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
             );
           })}
 
-          {/* Mensaje cuando no hay sugerencias */}
-          {!loading && suggestions.length === 0 && isMyTurn && (
+          {/* Mensaje cuando no hay sugerencias y no hay error */}
+          {!loading && !error && suggestions.length === 0 && isMyTurn && (
             <div className="suggestions-empty">No hay sugerencias disponibles</div>
           )}
 

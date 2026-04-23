@@ -167,7 +167,7 @@ function App() {
         <AdvantageBar
           score={evaluation.score}
           mateIn={evaluation.mateIn}
-          height={560}
+          height={640}
         />
 
         {/* COLUMNA 2: Tablero + sugerencias debajo */}
