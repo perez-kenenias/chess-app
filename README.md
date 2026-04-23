@@ -6,16 +6,36 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 
 ## ✨ Características
 
+### Juego
 - **Juega contra Stockfish** con niveles de dificultad del 0 (principiante) al 20 (maestro)
-- **Sugerencias inteligentes** — antes de mover, el panel muestra las 3 mejores jugadas con explicaciones en lenguaje natural
-- **Pista en el tablero** — resalta la casilla de origen y destino de la mejor jugada
-- **Barra de ventaja** — muestra quién va ganando en centipawns en tiempo real
-- **Historial de jugadas** en notación algebraica estándar (SAN)
-- **Replay de partida** — reproduce cualquier partida movimiento a movimiento con controles de reproducción
+- **Soporte para blancas y negras** — el tablero se gira automáticamente
 - **Jaque resaltado** — el rey en jaque se muestra en rojo
 - **Movimientos legales** — al seleccionar una pieza, aparecen puntos en las casillas a donde puede moverse
-- **Soporte para blancas y negras** — el tablero se gira automáticamente
-- Nombre de casillas opcional (a1, e4, h8...)
+
+### Navegación del historial
+- **Flechas ⏮ ◀ ▶ ⏭** debajo del tablero para retroceder y avanzar jugadas como en chess.com
+- **Clic en cualquier jugada** del historial para ir directamente a esa posición
+- **Teclado ← →** para navegar sin usar el ratón
+- **Modo revisión** — el tablero es de solo lectura mientras revisas; el juego continúa cuando vuelves a "En vivo"
+
+### Análisis y sugerencias
+- **Sugerencias inteligentes** — las 3 mejores jugadas con explicación táctica en español
+- **Estrategia del rival** — un banner explica qué busca el oponente en la posición actual (apertura / medio / final)
+- **Respuesta del rival** — cada sugerencia indica qué puede hacer inmediatamente el rival después de esa jugada
+- **Tips de entrenamiento** — consejos rotativos para progresar de amateur a avanzado (apertura, táctica, endgame...)
+- **Pista en el tablero** — resalta en azul la casilla de origen y destino de la mejor jugada
+- **Barra de ventaja** — muestra quién va ganando en centipawns en tiempo real
+
+### Reloj de ajedrez
+- **Selector de tiempo** en el panel de control: 1', 3', 5', 10', 30' o sin límite (∞)
+- **Reloj visible** con cuenta regresiva para blancas y negras
+- El jugador activo se resalta en dorado; tiempo bajo (< 10 s) parpadea en rojo
+- El reloj se pausa automáticamente mientras el bot piensa o el jugador revisa el historial
+
+### Historial y replay
+- **Historial de jugadas** en notación algebraica estándar (SAN)
+- **Replay de partida** — modal con reproducción automática (play/pausa) y control posición a posición
+- Nombre de casillas opcional en el tablero (a1, e4, h8...)
 
 ---
 
@@ -52,11 +72,12 @@ chess-trainer/
     │   ├── api/
     │   │   └── chess.js    # Llamadas HTTP al backend
     │   ├── components/
-    │   │   ├── Board.jsx           # Tablero interactivo
-    │   │   ├── AdvantageBar.jsx    # Barra de ventaja
-    │   │   ├── ControlPanel.jsx    # Panel de configuración
-    │   │   ├── MoveHistory.jsx     # Historial + replay
-    │   │   └── MoveSuggestions.jsx # Sugerencias para principiantes
+    │   │   ├── Board.jsx           # Tablero interactivo (+ modo revisión)
+    │   │   ├── AdvantageBar.jsx    # Barra de ventaja en centipawns
+    │   │   ├── ChessClock.jsx      # Reloj de ajedrez con cuenta regresiva
+    │   │   ├── ControlPanel.jsx    # Panel de configuración + selector de reloj
+    │   │   ├── MoveHistory.jsx     # Historial clicable + replay modal
+    │   │   └── MoveSuggestions.jsx # Sugerencias + estrategia rival + tips
     │   ├── App.jsx          # Componente raíz
     │   ├── App.css          # Estilos globales
     │   └── main.jsx         # Punto de entrada de React
@@ -193,10 +214,17 @@ La API REST corre en `http://localhost:8000`. Puedes explorarla en:
 
 1. **Elige tu color** en el panel de la derecha (blancas o negras)
 2. **Ajusta el nivel** del bot (0 = muy fácil, 20 = maestro)
-3. **Mueve tus piezas** arrastrándolas o haciendo clic (clic en la pieza → clic en el destino)
-4. **Consulta el panel de sugerencias** debajo del tablero para ver las mejores opciones antes de mover
-5. **Pide una pista** con el botón "💡 Pedir pista" para resaltar la mejor jugada en azul
-6. Al terminar la partida, pulsa **▶ Replay** en el historial para ver toda la partida
+3. **Selecciona el tiempo** del reloj (1', 3', 5', 10', 30' o ∞) — opcional
+4. **Mueve tus piezas** arrastrándolas o haciendo clic (clic en pieza → clic en destino)
+5. **Consulta las sugerencias** debajo del tablero:
+   - El banner naranja muestra la estrategia actual del rival
+   - Cada tarjeta explica la jugada y lo que el rival podría responder
+   - El tip azul al pie da un consejo de entrenamiento para esa posición
+6. **Pide una pista** con "💡 Pedir pista" para ver la mejor jugada resaltada en azul
+7. **Navega el historial** con ⏮ ◀ ▶ ⏭ debajo del tablero (o teclas ← →)
+   - Haz clic en cualquier jugada del historial para ir directamente a esa posición
+   - El tablero entra en modo revisión (solo lectura); pulsa ⏭ para volver al juego
+8. Al terminar, pulsa **▶ Replay** en el historial para reproducir toda la partida
 
 ---
 
