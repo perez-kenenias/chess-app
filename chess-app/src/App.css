@@ -561,6 +561,156 @@ body {
 .move-white { color: #d0c49a; }
 .move-black { color: var(--text-2); }
 
+/* ══════════════════════════════════════════
+   TARJETA DE ANÁLISIS DE JUGADA (MoveAnalysisCard)
+   Aparece en la columna derecha — independiente
+   de las sugerencias del tablero
+   ══════════════════════════════════════════ */
+
+.move-analysis-card {
+  background: var(--surface);
+  border: 1px solid rgba(251,146,60,0.35); /* borde naranja sutil */
+  border-left: 3px solid #fb923c;          /* acento izquierdo más visible */
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+}
+
+.mac-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: rgba(251,146,60,0.07);
+  border-bottom: 1px solid rgba(251,146,60,0.2);
+}
+
+.mac-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mac-icon { font-size: 13px; }
+.mac-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+}
+
+.mac-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mac-blunder-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+.mac-close {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.mac-close:hover { background: var(--hover); color: var(--text); }
+
+/* Fila de comparación jugada */
+.mac-comparison {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mac-move {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.mac-move--played {
+  background: rgba(220,50,50,0.07);
+  border: 1px solid rgba(220,50,50,0.18);
+}
+
+.mac-move--suggested {
+  background: rgba(80,160,255,0.07);
+  border: 1px solid rgba(80,160,255,0.22);
+  cursor: default;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mac-move--suggested:hover {
+  background: rgba(80,160,255,0.14);
+  border-color: rgba(80,160,255,0.45);
+}
+
+.mac-move-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.mac-move-san {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'Cormorant Garamond', serif;
+  line-height: 1.1;
+}
+.mac-move-san--played    { color: #f87171; }
+.mac-move-san--suggested { color: #60a5fa; }
+
+.mac-move-detail {
+  font-size: 10px;
+  color: var(--text-2);
+  font-family: monospace;
+}
+
+.mac-hover-hint {
+  font-size: 9px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.mac-vs {
+  align-self: center;
+  padding: 0 8px;
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Razonamiento posicional */
+.mac-context {
+  padding: 10px 12px;
+}
+.mac-context p {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin: 0;
+}
+
 /* ── Animaciones ── */
 @keyframes spin   { to { transform: rotate(360deg); } }
 @keyframes pulse  { 0%,100%{ opacity:1 } 50%{ opacity:0.25 } }
@@ -624,6 +774,10 @@ body {
   border-color: var(--gold-border);
   background: var(--hover);
 }
+/* Tarjeta de la mejor jugada: borde dorado tenue */
+.suggestion-card--top {
+  border-color: rgba(201,168,76,0.3);
+}
 
 .suggestion-top {
   display: flex;
@@ -664,8 +818,48 @@ body {
 .badge-capture { background: rgba(220,50,50,0.15); color: #f87171; border: 1px solid rgba(220,50,50,0.3); }
 .badge-check   { background: rgba(250,200,20,0.12); color: #facc15; border: 1px solid rgba(250,200,20,0.3); }
 .badge-castle  { background: rgba(80,160,255,0.12); color: #60a5fa; border: 1px solid rgba(80,160,255,0.3); }
+.badge-best    { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
 
 .suggestions-note  { font-size: 10px; color: var(--text-3); text-align: center; padding: 4px 0 2px; }
+
+/* ── Tarjeta de jugada equivocada ── */
+.wrong-move-card {
+  background: rgba(251, 146, 60, 0.07);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.3s ease;
+}
+
+.wrong-move-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wrong-move-icon  { font-size: 13px; color: #fb923c; }
+.wrong-move-title { font-size: 10px; font-weight: 600; color: #fb923c; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.wrong-move-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.wrong-move-label    { font-size: 10px; color: var(--text-3); }
+.wrong-move-played   { font-size: 13px; font-weight: 700; color: #f87171; font-family: monospace; }
+.wrong-move-sep      { font-size: 11px; color: var(--text-3); }
+.wrong-move-suggested{ font-size: 13px; font-weight: 700; color: #4ade80; font-family: monospace; }
+
+.wrong-move-reason {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.5;
+  border-top: 1px solid rgba(251,146,60,0.15);
+  padding-top: 5px;
+}
 .suggestions-empty { font-size: 12px; color: var(--text-2); text-align: center; padding: 10px; }
 
 .suggestions-error {

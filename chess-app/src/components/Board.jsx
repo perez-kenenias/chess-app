@@ -46,8 +46,9 @@ const Board = ({
   playerColor  = "white",
   skillLevel   = 10,
   settings     = {},
-  hintMove     = null,
-  analysisMode = false,    // true = mueve ambos colores, sin bot
+  hintMove         = null,
+  analysisMode     = false,    // true = mueve ambos colores, sin bot
+  opponentSquares  = {},        // { sq: "attacker"|"attacked" } — amenazas del rival
 }) => {
 
   // ── Estado local ────────────────────────────────────────────────────────────
@@ -397,6 +398,22 @@ const Board = ({
    */
   const buildSquareStyles = () => {
     const styles = { ...legalDots };
+
+    // Amenazas del rival: piezas que atacan (naranja) y tus piezas atacadas (glow rojo)
+    Object.entries(opponentSquares).forEach(([sq, type]) => {
+      if (type === "attacker") {
+        styles[sq] = {
+          ...styles[sq],
+          backgroundColor: "rgba(251, 146, 60, 0.28)",
+          boxShadow: "inset 0 0 0 2px rgba(251,146,60,0.55)",
+        };
+      } else if (type === "attacked") {
+        styles[sq] = {
+          ...styles[sq],
+          boxShadow: "inset 0 0 0 3px rgba(220, 50, 50, 0.75)",
+        };
+      }
+    });
 
     if (selectedSquare) {
       styles[selectedSquare] = {

@@ -14,8 +14,9 @@ import Board           from "./components/Board";
 import ControlPanel    from "./components/ControlPanel";
 import AdvantageBar    from "./components/AdvantageBar";
 import MoveHistory     from "./components/MoveHistory";
-import MoveSuggestions from "./components/MoveSuggestions";
-import ChessClock      from "./components/ChessClock";
+import MoveSuggestions   from "./components/MoveSuggestions";
+import MoveAnalysisCard  from "./components/MoveAnalysisCard";
+import ChessClock        from "./components/ChessClock";
 import { checkHealth, getHint } from "./api/chess";
 import "./App.css";
 
@@ -53,9 +54,18 @@ function App() {
   const [blackTime, setBlackTime]       = useState(null);
 
   // ── UI ───────────────────────────────────────────────────────────────────────
-  const [hintMove, setHintMove]           = useState(null);
-  const [highlightMove, setHighlightMove] = useState(null);
-  const [backendOk, setBackendOk]         = useState(null);
+  const [hintMove, setHintMove]             = useState(null);
+  const [highlightMove, setHighlightMove]   = useState(null);
+  const [backendOk, setBackendOk]           = useState(null);
+  const [opponentSquares, setOpponentSquares] = useState({});
+
+  // ── Análisis de jugada equivocada ────────────────────────────────────────────
+  // lastPlayerMove = { san, fenBefore } — guardado cuando el jugador mueve (no el bot)
+  const [lastPlayerMove, setLastPlayerMove] = useState(null);
+  // wrongMoveInfo = datos del análisis de la última jugada subóptima del jugador
+  const [wrongMoveInfo, setWrongMoveInfo]   = useState(null);
+  // missedMoveHighlight = resaltado en el tablero de la jugada que debió hacerse
+  const [missedMoveHighlight, setMissedMoveHighlight] = useState(null);
 
   // ── Refs para el reloj ───────────────────────────────────────────────────────
   const gameStatusRef = useRef(gameStatus);
@@ -86,6 +96,20 @@ function App() {
   const _resetUI = useCallback(() => {
     setHintMove(null);
     setHighlightMove(null);
+    setMissedMoveHighlight(null);
+  }, []);
+
+  /**
+   * handleWrongMove — recibe el análisis de la jugada subóptima desde MoveSuggestions.
+   * Actualiza el estado y extrae las casillas para resaltar en el tablero.
+   */
+  const handleWrongMove = useCallback((info) => {
+    setWrongMoveInfo(info);
+    if (info?.suggestedFrom && info?.suggestedTo) {
+      setMissedMoveHighlight({ from_square: info.suggestedFrom, to_square: info.suggestedTo });
+    } else {
+      setMissedMoveHighlight(null);
+    }
   }, []);
 
   // ── Handlers principales ─────────────────────────────────────────────────────
@@ -104,8 +128,13 @@ function App() {
     // Al hacer una jugada nueva se descarta cualquier "futuro" almacenado
     setFutureMoves([]);
     setFutureFenHistory([]);
+    // Guardar la jugada del JUGADOR (no la del bot) para análisis de error
+    // fen en este punto es el FEN ANTES del movimiento (state no ha re-renderizado)
+    if (!analysisMode && color === playerColor) {
+      setLastPlayerMove({ san, fenBefore: fen });
+    }
     _resetUI();
-  }, [_resetUI]);
+  }, [_resetUI, analysisMode, playerColor, fen]);
 
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
@@ -119,6 +148,9 @@ function App() {
     setFutureFenHistory([]);
     setGameStatus({ turn: "w" });
     setEvaluation({ score: 0, mateIn: null });
+    setLastPlayerMove(null);
+    setWrongMoveInfo(null);
+    setOpponentSquares({});
     _resetUI();
     if (clockMinutes > 0) {
       setWhiteTime(clockMinutes * 60);
@@ -136,6 +168,9 @@ function App() {
       setFutureFenHistory([]);
       setGameStatus({ turn: "w" });
       setEvaluation({ score: 0, mateIn: null });
+      setLastPlayerMove(null);
+      setWrongMoveInfo(null);
+      setOpponentSquares({});
       _resetUI();
       if (clockMinutes > 0) {
         setWhiteTime(clockMinutes * 60);
@@ -192,6 +227,7 @@ function App() {
     setFenHistory(newFenHistory);
     setFen(newFen);
     setEvaluation({ score: 0, mateIn: null });
+    setLastPlayerMove(null);
     _resetUI();
   }, [moves, fenHistory, gameStatus.isThinking, analysisMode, _resetUI]);
 
@@ -214,6 +250,7 @@ function App() {
     const newFen = redoFens[redoFens.length - 1];
     setFen(newFen);
     setEvaluation({ score: 0, mateIn: null });
+    setLastPlayerMove(null);
     _resetUI();
   }, [futureMoves, futureFenHistory, gameStatus.isThinking, analysisMode, _resetUI]);
 
@@ -262,7 +299,8 @@ function App() {
   }, [handleUndo, handleRedo]);
 
   // ── Derivados ────────────────────────────────────────────────────────────────
-  const activeHint   = hintMove ?? highlightMove;
+  // Prioridad: pista explícita > hover sobre sugerencia > jugada perdida del análisis
+  const activeHint   = hintMove ?? highlightMove ?? missedMoveHighlight;
   const lastMoveSan  = moves.length > 0 ? moves[moves.length - 1].san : null;
   const activeColor  = gameStatus.turn === "w" ? "white" : "black";
   const canUndo      = moves.length > 0 && !gameStatus.isThinking;
@@ -330,6 +368,7 @@ function App() {
             settings={settings}
             hintMove={activeHint}
             analysisMode={analysisMode}
+            opponentSquares={opponentSquares}
           />
 
           {/*
@@ -382,6 +421,9 @@ function App() {
             playerColor={playerColor}
             gameStatus={gameStatus}
             onHighlight={setHighlightMove}
+            onOpponentSquares={setOpponentSquares}
+            onWrongMove={handleWrongMove}
+            lastPlayerMove={lastPlayerMove}
             analysisMode={analysisMode}
           />
         </div>
@@ -412,6 +454,22 @@ function App() {
             lastMoveSan={lastMoveSan}
             clockMinutes={clockMinutes}
             onClockChange={handleClockChange}
+          />
+
+          {/*
+            Tarjeta de análisis de la última jugada del jugador.
+            Aparece cuando el jugador hizo una jugada subóptima.
+            Muestra razonamiento posicional y resalta en el tablero
+            las casillas de la jugada que Stockfish prefería.
+          */}
+          <MoveAnalysisCard
+            info={wrongMoveInfo}
+            onClose={() => { setWrongMoveInfo(null); setMissedMoveHighlight(null); }}
+            onHighlight={(h) => {
+              // Al hacer hover en la tarjeta, resaltar en el tablero
+              // Solo si no hay pista activa ni sugerencia en hover
+              if (!hintMove && !highlightMove) setMissedMoveHighlight(h);
+            }}
           />
 
           <MoveHistory

@@ -22,9 +22,12 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 - **Teclado ← → y Ctrl+Z / Ctrl+Y** para deshacer/rehacer sin tocar el ratón
 
 ### Análisis y sugerencias
-- **Sugerencias inteligentes** — las 3 mejores jugadas con explicación táctica en español
+- **Sugerencias inteligentes** — las 3 mejores jugadas, cada una con explicación de POR QUÉ es buena (razón táctica + contexto de ventaja)
+- **Análisis de jugada equivocada** — si no elegiste la jugada óptima, aparece una tarjeta naranja explicando qué perdiste y por qué Stockfish prefería otra jugada
+- **Amenazas del rival en el tablero** — las piezas del oponente que te amenazan se resaltan en naranja; tus piezas bajo ataque muestran un borde rojo, para que veas visualmente el peligro
 - **Estrategia del rival** — un banner explica qué busca el oponente en la posición actual (apertura / medio / final)
 - **Respuesta del rival** — cada sugerencia indica qué puede hacer inmediatamente el rival después de esa jugada
+- **Badge ★ Mejor** — la primera tarjeta está marcada con borde dorado para identificar la opción óptima
 - **Tips de entrenamiento** — consejos rotativos para progresar de amateur a avanzado (apertura, táctica, endgame...)
 - **Pista en el tablero** — resalta en azul la casilla de origen y destino de la mejor jugada
 - **Barra de ventaja** — muestra quién va ganando en centipawns en tiempo real
