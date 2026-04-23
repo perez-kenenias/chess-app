@@ -1,0 +1,11 @@
+# Backend de ajedrez — dependencias Python
+#
+# fastapi       → Framework web moderno y rápido (reemplaza Flask en nuevos proyectos)
+# uvicorn       → Servidor ASGI que corre FastAPI (equivalente a Tomcat para Java)
+# python-chess  → Maneja tablero, reglas, validación FEN y comunicación UCI con Stockfish
+# pydantic      → Validación de datos (ya viene con FastAPI, se lista para claridad)
+
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-chess>=1.999
+pydantic>=2.0.0
