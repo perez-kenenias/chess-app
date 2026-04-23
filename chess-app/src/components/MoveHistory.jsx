@@ -194,7 +194,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
 
 // ── Componente MoveHistory ────────────────────────────────────────────────────
 
-const MoveHistory = ({ moves = [], fenHistory = [], viewIdx = null, onNavigate }) => {
+const MoveHistory = ({ moves = [], fenHistory = [] }) => {
   const [showReplay, setShowReplay] = useState(false);
   const listRef = useRef(null); // ref al contenedor de la lista, NO a un elemento dentro
 
@@ -238,29 +238,15 @@ const MoveHistory = ({ moves = [], fenHistory = [], viewIdx = null, onNavigate }
           <div className="mh-empty">La partida no ha comenzado</div>
         ) : (
           <div className="mh-list" ref={listRef}>
-            {pairs.map((pair, pairIdx) => {
-              const whiteNav = pairIdx * 2 + 1; // índice en fenHistory
-              const blackNav = pairIdx * 2 + 2;
-              return (
-                <div key={pair.number} className="move-pair">
-                  <span className="move-num">{pair.number}.</span>
-                  <span
-                    className={`move-cell move-white ${viewIdx === whiteNav ? "move-active" : ""}`}
-                    onClick={() => onNavigate?.(whiteNav)}
-                    title={`Ver jugada ${pair.number} blancas`}
-                  >
-                    {pair.white.san}
-                  </span>
-                  <span
-                    className={`move-cell move-black ${viewIdx === blackNav ? "move-active" : ""} ${!pair.black ? "move-cell-empty" : ""}`}
-                    onClick={() => pair.black && onNavigate?.(blackNav)}
-                    title={pair.black ? `Ver jugada ${pair.number} negras` : undefined}
-                  >
-                    {pair.black ? pair.black.san : "..."}
-                  </span>
-                </div>
-              );
-            })}
+            {pairs.map((pair) => (
+              <div key={pair.number} className="move-pair">
+                <span className="move-num">{pair.number}.</span>
+                <span className="move-cell move-white">{pair.white.san}</span>
+                <span className={`move-cell move-black ${!pair.black ? "move-cell-empty" : ""}`}>
+                  {pair.black ? pair.black.san : "..."}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 

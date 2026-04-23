@@ -2,10 +2,11 @@
  * App.jsx — El componente raíz, el "director de orquesta"
  *
  * Responsabilidades:
- *   1. Guardar el estado global: FEN, historial, nivel, color, evaluación
- *   2. Navegación del historial (viewIdx) para revisar jugadas pasadas
+ *   1. Estado global: FEN, historial, nivel, color, evaluación
+ *   2. Deshacer / Rehacer (undo/redo) — como chess.com / Word
  *   3. Reloj de ajedrez con tiempo seleccionable
- *   4. Conectar todos los componentes pasando datos y callbacks
+ *   4. Modo análisis libre (mueve ambos colores, sugerencias siempre visibles)
+ *   5. Conectar todos los componentes pasando datos y callbacks
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -24,10 +25,15 @@ function App() {
 
   // ── Estado del juego ────────────────────────────────────────────────────────
   const [fen, setFen]               = useState(INITIAL_FEN);
-  const [moves, setMoves]           = useState([]);       // [{ san, color }]
+  const [moves, setMoves]           = useState([]);
   const [fenHistory, setFenHistory] = useState([INITIAL_FEN]);
   const [gameStatus, setGameStatus] = useState({ turn: "w" });
   const [evaluation, setEvaluation] = useState({ score: 0, mateIn: null });
+
+  // ── Deshacer / Rehacer ───────────────────────────────────────────────────────
+  // futureMoves[0] = primera jugada a rehacer (orden cronológico)
+  const [futureMoves,      setFutureMoves]      = useState([]);
+  const [futureFenHistory, setFutureFenHistory] = useState([]);
 
   // ── Configuración ────────────────────────────────────────────────────────────
   const [skillLevel, setSkillLevel]   = useState(10);
@@ -38,12 +44,11 @@ function App() {
     showLastMoveSan:  true,
   });
 
-  // ── Navegación de historial ──────────────────────────────────────────────────
-  // null = posición viva/actual · 0..n = revisando fenHistory[viewIdx]
-  const [viewIdx, setViewIdx] = useState(null);
+  // ── Modo análisis libre ───────────────────────────────────────────────────────
+  const [analysisMode, setAnalysisMode] = useState(false);
 
-  // ── Reloj de ajedrez ─────────────────────────────────────────────────────────
-  const [clockMinutes, setClockMinutes] = useState(0); // 0 = sin límite
+  // ── Reloj ────────────────────────────────────────────────────────────────────
+  const [clockMinutes, setClockMinutes] = useState(0);
   const [whiteTime, setWhiteTime]       = useState(null);
   const [blackTime, setBlackTime]       = useState(null);
 
@@ -52,52 +57,55 @@ function App() {
   const [highlightMove, setHighlightMove] = useState(null);
   const [backendOk, setBackendOk]         = useState(null);
 
-  // ── Refs para el tick del reloj (sin stale closures) ───────────────────────
+  // ── Refs para el reloj ───────────────────────────────────────────────────────
   const gameStatusRef = useRef(gameStatus);
   useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
-  const viewIdxRef = useRef(viewIdx);
-  useEffect(() => { viewIdxRef.current = viewIdx; }, [viewIdx]);
 
-  // ── Verificar backend al iniciar ────────────────────────────────────────────
+  // ── Verificar backend ────────────────────────────────────────────────────────
   useEffect(() => {
     checkHealth()
       .then(() => setBackendOk(true))
       .catch(() => setBackendOk(false));
   }, []);
 
-  // ── Tick del reloj cada segundo ─────────────────────────────────────────────
-  // El intervalo se crea una sola vez (cuando el modo pasa de unlimited → timed).
-  // Dentro del callback leemos refs para evitar stale closures.
+  // ── Tick del reloj ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (whiteTime === null) return;
     const id = setInterval(() => {
       const { turn, gameOver, isThinking } = gameStatusRef.current;
-      if (gameOver || isThinking || viewIdxRef.current !== null) return;
-      if (turn === "w") {
-        setWhiteTime(t => Math.max(0, t - 1));
-      } else {
-        setBlackTime(t => Math.max(0, t - 1));
-      }
+      if (gameOver || isThinking) return;
+      if (turn === "w") setWhiteTime(t => Math.max(0, t - 1));
+      else              setBlackTime(t => Math.max(0, t - 1));
     }, 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whiteTime !== null]);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Helpers internos ─────────────────────────────────────────────────────────
 
-  const handleSettingChange = useCallback((key, value) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  const handleMoveMade = useCallback(({ san, color, fen: moveFen }) => {
-    setMoves((prev) => [...prev, { san, color }]);
-    if (moveFen) {
-      setFenHistory((prev) => [...prev, moveFen]);
-    }
+  const _resetUI = useCallback(() => {
     setHintMove(null);
     setHighlightMove(null);
-    setViewIdx(null); // jugada nueva → volver a posición viva
   }, []);
+
+  // ── Handlers principales ─────────────────────────────────────────────────────
+
+  const handleSettingChange = useCallback((key, value) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  /**
+   * handleMoveMade — llegada cada vez que Board hace una jugada.
+   * Agrega al historial y borra el stack de rehacer (nueva línea).
+   */
+  const handleMoveMade = useCallback(({ san, color, fen: moveFen }) => {
+    setMoves(prev => [...prev, { san, color }]);
+    if (moveFen) setFenHistory(prev => [...prev, moveFen]);
+    // Al hacer una jugada nueva se descarta cualquier "futuro" almacenado
+    setFutureMoves([]);
+    setFutureFenHistory([]);
+    _resetUI();
+  }, [_resetUI]);
 
   const handleFenChange = useCallback((newFen) => {
     setFen(newFen);
@@ -107,16 +115,16 @@ function App() {
     setFen(INITIAL_FEN);
     setMoves([]);
     setFenHistory([INITIAL_FEN]);
+    setFutureMoves([]);
+    setFutureFenHistory([]);
     setGameStatus({ turn: "w" });
     setEvaluation({ score: 0, mateIn: null });
-    setHintMove(null);
-    setHighlightMove(null);
-    setViewIdx(null);
+    _resetUI();
     if (clockMinutes > 0) {
       setWhiteTime(clockMinutes * 60);
       setBlackTime(clockMinutes * 60);
     }
-  }, [clockMinutes]);
+  }, [clockMinutes, _resetUI]);
 
   const handleColorChange = useCallback((color) => {
     setPlayerColor(color);
@@ -124,27 +132,22 @@ function App() {
       setFen(INITIAL_FEN);
       setMoves([]);
       setFenHistory([INITIAL_FEN]);
+      setFutureMoves([]);
+      setFutureFenHistory([]);
       setGameStatus({ turn: "w" });
       setEvaluation({ score: 0, mateIn: null });
-      setHintMove(null);
-      setHighlightMove(null);
-      setViewIdx(null);
+      _resetUI();
       if (clockMinutes > 0) {
         setWhiteTime(clockMinutes * 60);
         setBlackTime(clockMinutes * 60);
       }
     }, 0);
-  }, [clockMinutes]);
+  }, [clockMinutes, _resetUI]);
 
   const handleClockChange = useCallback((minutes) => {
     setClockMinutes(minutes);
-    if (minutes === 0) {
-      setWhiteTime(null);
-      setBlackTime(null);
-    } else {
-      setWhiteTime(minutes * 60);
-      setBlackTime(minutes * 60);
-    }
+    if (minutes === 0) { setWhiteTime(null); setBlackTime(null); }
+    else { setWhiteTime(minutes * 60); setBlackTime(minutes * 60); }
   }, []);
 
   const handleHint = useCallback(async () => {
@@ -157,41 +160,113 @@ function App() {
     }
   }, [fen, gameStatus]);
 
-  // ── Navegación del historial ─────────────────────────────────────────────────
+  const handleToggleAnalysis = useCallback(() => {
+    setAnalysisMode(prev => !prev);
+  }, []);
 
-  const handleNavPrev = useCallback(() => {
-    setViewIdx(prev => {
-      if (prev === 0) return 0;
-      if (prev === null) return Math.max(0, fenHistory.length - 2);
-      return prev - 1;
-    });
-  }, [fenHistory.length]);
+  // ── Deshacer / Rehacer ───────────────────────────────────────────────────────
 
-  const handleNavNext = useCallback(() => {
-    setViewIdx(prev => {
-      if (prev === null) return null;
-      if (prev >= fenHistory.length - 1) return null; // último → volver a vivo
-      return prev + 1;
-    });
-  }, [fenHistory.length]);
+  /**
+   * handleUndo — deshace jugadas.
+   *
+   * En modo vs-bot deshace 2 half-moves (tu jugada + respuesta del bot)
+   * para que siempre vuelva a ser tu turno.
+   * En modo análisis deshace 1 half-move a la vez.
+   */
+  const handleUndo = useCallback(() => {
+    if (moves.length === 0 || gameStatus.isThinking) return;
 
-  // Teclado: ← → para navegar (solo cuando hay jugadas y no se está escribiendo)
+    const count = (!analysisMode && moves.length >= 2) ? 2 : 1;
+
+    const newMoves      = moves.slice(0, -count);
+    const newFenHistory = fenHistory.slice(0, -count);
+    const undoneMoves   = moves.slice(-count);
+    const undoneFens    = fenHistory.slice(-count);
+
+    // Prepend en orden cronológico → futureMoves[0] = primera a rehacer
+    setFutureMoves(prev      => [...undoneMoves, ...prev]);
+    setFutureFenHistory(prev => [...undoneFens,  ...prev]);
+
+    const newFen = newFenHistory[newFenHistory.length - 1];
+    setMoves(newMoves);
+    setFenHistory(newFenHistory);
+    setFen(newFen);
+    setEvaluation({ score: 0, mateIn: null });
+    _resetUI();
+  }, [moves, fenHistory, gameStatus.isThinking, analysisMode, _resetUI]);
+
+  /**
+   * handleRedo — rehace jugadas previamente deshechas.
+   */
+  const handleRedo = useCallback(() => {
+    if (futureMoves.length === 0 || gameStatus.isThinking) return;
+
+    const count = (!analysisMode && futureMoves.length >= 2) ? 2 : 1;
+
+    const redoMoves = futureMoves.slice(0, count);
+    const redoFens  = futureFenHistory.slice(0, count);
+
+    setMoves(prev      => [...prev, ...redoMoves]);
+    setFenHistory(prev => [...prev, ...redoFens]);
+    setFutureMoves(prev      => prev.slice(count));
+    setFutureFenHistory(prev => prev.slice(count));
+
+    const newFen = redoFens[redoFens.length - 1];
+    setFen(newFen);
+    setEvaluation({ score: 0, mateIn: null });
+    _resetUI();
+  }, [futureMoves, futureFenHistory, gameStatus.isThinking, analysisMode, _resetUI]);
+
+  /** handleUndoAll — vuelve al inicio (posición inicial). */
+  const handleUndoAll = useCallback(() => {
+    if (moves.length === 0 || gameStatus.isThinking) return;
+
+    setFutureMoves(prev      => [...moves,                 ...prev]);
+    setFutureFenHistory(prev => [...fenHistory.slice(1),   ...prev]);
+
+    const startFen = fenHistory[0];
+    setMoves([]);
+    setFenHistory([startFen]);
+    setFen(startFen);
+    setEvaluation({ score: 0, mateIn: null });
+    _resetUI();
+  }, [moves, fenHistory, gameStatus.isThinking, _resetUI]);
+
+  /** handleRedoAll — avanza al final (última posición jugada). */
+  const handleRedoAll = useCallback(() => {
+    if (futureMoves.length === 0 || gameStatus.isThinking) return;
+
+    setMoves(prev      => [...prev, ...futureMoves]);
+    setFenHistory(prev => [...prev, ...futureFenHistory]);
+
+    const lastFen = futureFenHistory[futureFenHistory.length - 1];
+    setFutureMoves([]);
+    setFutureFenHistory([]);
+    setFen(lastFen);
+    setEvaluation({ score: 0, mateIn: null });
+    _resetUI();
+  }, [futureMoves, futureFenHistory, gameStatus.isThinking, _resetUI]);
+
+  // ── Teclado: Ctrl+Z / Ctrl+Y (o ← → sin Ctrl) ──────────────────────────────
   useEffect(() => {
-    if (moves.length === 0) return;
     const onKey = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-      if (e.key === "ArrowLeft")  { e.preventDefault(); handleNavPrev(); }
-      if (e.key === "ArrowRight") { e.preventDefault(); handleNavNext(); }
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === "z") { e.preventDefault(); handleUndo(); }
+      if (ctrl && (e.key === "y" || e.key === "Z")) { e.preventDefault(); handleRedo(); }
+      if (!ctrl && e.key === "ArrowLeft")  { e.preventDefault(); handleUndo(); }
+      if (!ctrl && e.key === "ArrowRight") { e.preventDefault(); handleRedo(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleNavPrev, handleNavNext, moves.length]);
+  }, [handleUndo, handleRedo]);
 
   // ── Derivados ────────────────────────────────────────────────────────────────
-  const activeHint  = hintMove ?? highlightMove;
-  const lastMoveSan = moves.length > 0 ? moves[moves.length - 1].san : null;
-  const reviewFen   = viewIdx !== null ? fenHistory[viewIdx] : null;
-  const activeColor = gameStatus.turn === "w" ? "white" : "black";
+  const activeHint   = hintMove ?? highlightMove;
+  const lastMoveSan  = moves.length > 0 ? moves[moves.length - 1].san : null;
+  const activeColor  = gameStatus.turn === "w" ? "white" : "black";
+  const canUndo      = moves.length > 0 && !gameStatus.isThinking;
+  const canRedo      = futureMoves.length > 0 && !gameStatus.isThinking;
 
 
   // ── Pantallas de carga y error ───────────────────────────────────────────────
@@ -242,7 +317,7 @@ function App() {
           height={640}
         />
 
-        {/* COLUMNA 2: Tablero + flechas de navegación + sugerencias */}
+        {/* COLUMNA 2: Tablero + controles deshacer/rehacer + sugerencias */}
         <div className="board-col">
           <Board
             fen={fen}
@@ -254,59 +329,61 @@ function App() {
             skillLevel={skillLevel}
             settings={settings}
             hintMove={activeHint}
-            reviewFen={reviewFen}
+            analysisMode={analysisMode}
           />
 
-          {/* Flechas de navegación — como chess.com */}
-          {moves.length > 0 && (
+          {/*
+            Controles de deshacer / rehacer — como chess.com / Word.
+            ⏮ = deshacer todo · ◀ = deshacer 1 paso · ▶ = rehacer · ⏭ = rehacer todo
+            También responde a ← → y Ctrl+Z / Ctrl+Y.
+          */}
+          {(moves.length > 0 || futureMoves.length > 0) && (
             <div className="nav-arrows">
               <button
                 className="nav-btn"
-                onClick={() => setViewIdx(0)}
-                disabled={viewIdx === 0}
-                title="Posición inicial"
+                onClick={handleUndoAll}
+                disabled={!canUndo}
+                title="Deshacer todo — volver al inicio"
               >⏮</button>
 
               <button
                 className="nav-btn"
-                onClick={handleNavPrev}
-                disabled={viewIdx === 0}
-                title="Jugada anterior (←)"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                title="Deshacer jugada (← · Ctrl+Z)"
               >◀</button>
 
-              {viewIdx !== null ? (
-                <span className="nav-badge">
-                  Revisando {viewIdx}/{fenHistory.length - 1}
-                </span>
-              ) : (
-                <span className="nav-badge nav-badge-live">● En vivo</span>
-              )}
+              <span className={`nav-badge ${futureMoves.length > 0 ? "nav-badge-future" : "nav-badge-live"}`}>
+                {futureMoves.length > 0
+                  ? `+${futureMoves.length} por rehacer`
+                  : "● En vivo"
+                }
+              </span>
 
               <button
                 className="nav-btn"
-                onClick={handleNavNext}
-                disabled={viewIdx === null}
-                title="Jugada siguiente (→)"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                title="Rehacer jugada (→ · Ctrl+Y)"
               >▶</button>
 
               <button
                 className="nav-btn"
-                onClick={() => setViewIdx(null)}
-                disabled={viewIdx === null}
-                title="Volver a posición actual"
+                onClick={handleRedoAll}
+                disabled={!canRedo}
+                title="Rehacer todo — ir al final"
               >⏭</button>
             </div>
           )}
 
-          {/* Sugerencias solo en modo vivo (no durante revisión) */}
-          {viewIdx === null && (
-            <MoveSuggestions
-              fen={fen}
-              playerColor={playerColor}
-              gameStatus={gameStatus}
-              onHighlight={setHighlightMove}
-            />
-          )}
+          {/* Sugerencias de Stockfish */}
+          <MoveSuggestions
+            fen={fen}
+            playerColor={playerColor}
+            gameStatus={gameStatus}
+            onHighlight={setHighlightMove}
+            analysisMode={analysisMode}
+          />
         </div>
 
         {/* COLUMNA 3: Reloj + Panel de control + historial */}
@@ -328,6 +405,8 @@ function App() {
             onColorChange={handleColorChange}
             onHint={handleHint}
             onNewGame={handleNewGame}
+            analysisMode={analysisMode}
+            onToggleAnalysis={handleToggleAnalysis}
             gameStatus={gameStatus}
             hintMove={hintMove}
             lastMoveSan={lastMoveSan}
@@ -338,8 +417,6 @@ function App() {
           <MoveHistory
             moves={moves}
             fenHistory={fenHistory}
-            viewIdx={viewIdx}
-            onNavigate={setViewIdx}
           />
         </div>
 

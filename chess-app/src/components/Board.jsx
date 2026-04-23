@@ -43,11 +43,11 @@ const Board = ({
   onMoveMade,
   onGameStatus,
   onEvaluation,
-  playerColor = "white",
-  skillLevel  = 10,
-  settings    = {},
-  hintMove    = null,
-  reviewFen   = null,  // FEN histórico para modo revisión (null = posición viva)
+  playerColor  = "white",
+  skillLevel   = 10,
+  settings     = {},
+  hintMove     = null,
+  analysisMode = false,    // true = mueve ambos colores, sin bot
 }) => {
 
   // ── Estado local ────────────────────────────────────────────────────────────
@@ -64,16 +64,15 @@ const Board = ({
   const boardRef = useRef(null);
 
   // lastSentFen: el último FEN que nosotros mismos enviamos a App.jsx con onFenChange.
-  // Lo usamos para distinguir cambios internos (jugada) de externos (nueva partida).
-  // Es un ref porque no necesita causar re-renders.
   const lastSentFen = useRef(fen);
 
-  // gameRef: referencia al game actual para usarlo dentro de callbacks asíncronos
-  // sin depender del estado de React (evita stale closures en async).
+  // gameRef: acceso al game actual dentro de callbacks asíncronos (evita stale closures).
   const gameRef = useRef(game);
-  useEffect(() => {
-    gameRef.current = game;
-  }, [game]);
+  useEffect(() => { gameRef.current = game; }, [game]);
+
+  // analysisModeRef: acceso al modo análisis dentro de callbacks asíncronos.
+  const analysisModeRef = useRef(analysisMode);
+  useEffect(() => { analysisModeRef.current = analysisMode; }, [analysisMode]);
 
 
   // ── Sincronización con el prop fen (nueva partida) ───────────────────────────
@@ -109,6 +108,8 @@ const Board = ({
   // ── Bot mueve primero cuando el jugador elige negras ─────────────────────────
 
   useEffect(() => {
+    // En modo análisis el bot nunca mueve
+    if (analysisMode) return;
     if (playerColor === "black" && fen === INITIAL_FEN) {
       setBotError(null);
       const startGame = new Chess(INITIAL_FEN);
@@ -118,7 +119,7 @@ const Board = ({
       return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerColor, fen]);
+  }, [playerColor, fen, analysisMode]);
 
 
   // ── ResizeObserver para el overlay de casillas ───────────────────────────────
@@ -164,6 +165,9 @@ const Board = ({
    *   4. Evalúa la posición para la barra de ventaja
    */
   const triggerBotMove = async (currentFen, currentGame) => {
+    // En modo análisis el humano mueve ambos colores — el bot nunca responde
+    if (analysisModeRef.current) return;
+
     setBotError(null);
     setIsThinking(true);
     reportStatus(currentGame, true);
@@ -293,16 +297,20 @@ const Board = ({
   const onDrop = useCallback(({ piece, sourceSquare, targetSquare }) => {
     if (isThinking || gameRef.current.isGameOver()) return false;
 
-    // Solo el jugador puede mover sus propias piezas
-    const pieceColor = piece[0] === "w" ? "white" : "black";
-    if (pieceColor !== playerColor) return false;
-
-    // Solo se puede mover en el turno del jugador
-    const myTurn = playerColor === "white" ? "w" : "b";
-    if (gameRef.current.turn() !== myTurn) return false;
+    if (!analysisMode) {
+      // Modo normal: solo mover piezas propias en turno propio
+      const pieceColor = piece[0] === "w" ? "white" : "black";
+      if (pieceColor !== playerColor) return false;
+      const myTurn = playerColor === "white" ? "w" : "b";
+      if (gameRef.current.turn() !== myTurn) return false;
+    } else {
+      // Modo análisis: solo verificar que sea el turno correcto para esa pieza
+      const pieceColor = piece[0] === "w" ? "w" : "b";
+      if (gameRef.current.turn() !== pieceColor) return false;
+    }
 
     return applyPlayerMove(sourceSquare, targetSquare);
-  }, [isThinking, playerColor, applyPlayerMove]);
+  }, [isThinking, playerColor, analysisMode, applyPlayerMove]);
 
   /**
    * onSquareClick — se llama cuando el jugador hace clic en una casilla.
@@ -319,8 +327,10 @@ const Board = ({
     if (isThinking || gameRef.current.isGameOver()) return;
 
     const currentGame = gameRef.current;
-    const pieceOnSquare = currentGame.get(square); // { type, color } o null
-    const myTurn = playerColor === "white" ? "w" : "b";
+    const pieceOnSquare = currentGame.get(square);
+    // En modo análisis cualquier pieza del turno actual es "propia"
+    const activeTurn = currentGame.turn(); // "w" o "b"
+    const myTurn = analysisMode ? activeTurn : (playerColor === "white" ? "w" : "b");
 
     // Si hay casilla seleccionada y se clicó en un destino legal → mover
     if (selectedSquare && legalDots[square]) {
@@ -328,12 +338,11 @@ const Board = ({
       return;
     }
 
-    // Si se clicó en una pieza propia → seleccionarla y mostrar movimientos
+    // Si se clicó en una pieza del turno activo → seleccionarla
     if (pieceOnSquare && pieceOnSquare.color === myTurn) {
       const legalMoves = currentGame.moves({ square, verbose: true });
       const dots = {};
       legalMoves.forEach((m) => {
-        // Punto rojo si hay captura, punto blanco si es casilla libre
         dots[m.to] = {
           background: currentGame.get(m.to)
             ? "radial-gradient(circle, rgba(220,50,50,0.55) 80%, transparent 80%)"
@@ -346,10 +355,10 @@ const Board = ({
       return;
     }
 
-    // Clic en casilla vacía o pieza enemiga → deseleccionar
+    // Clic en casilla vacía o pieza del turno contrario → deseleccionar
     setLegalDots({});
     setSelectedSquare(null);
-  }, [isThinking, playerColor, selectedSquare, legalDots, applyPlayerMove]);
+  }, [isThinking, playerColor, analysisMode, selectedSquare, legalDots, applyPlayerMove]);
 
   /**
    * canDragPiece — le dice a react-chessboard qué piezas se pueden arrastrar.
@@ -359,11 +368,16 @@ const Board = ({
    */
   const canDragPiece = useCallback(({ piece }) => {
     if (isThinking || gameRef.current.isGameOver()) return false;
+    if (analysisMode) {
+      // En análisis: puede arrastrar la pieza del turno actual
+      const pieceColor = piece[0]; // "w" o "b"
+      return gameRef.current.turn() === pieceColor;
+    }
     const pieceColor = piece[0] === "w" ? "white" : "black";
     if (pieceColor !== playerColor) return false;
     const myTurn = playerColor === "white" ? "w" : "b";
     return gameRef.current.turn() === myTurn;
-  }, [isThinking, playerColor]);
+  }, [isThinking, playerColor, analysisMode]);
 
 
   // ── Estilos de casillas ─────────────────────────────────────────────────────
@@ -492,15 +506,8 @@ const Board = ({
   return (
     <div ref={boardRef} style={{ position: "relative", width: "100%" }}>
 
-      {/* Barra de modo revisión */}
-      {reviewFen && (
-        <div className="review-mode-bar">
-          Modo revisión — usa ◀ ▶ para navegar · ⏭ para volver al juego
-        </div>
-      )}
-
-      {/* Overlay de "pensando" (solo en modo vivo) */}
-      {isThinking && !reviewFen && (
+      {/* Overlay de "pensando" */}
+      {isThinking && (
         <div className="thinking-overlay">
           <div className="thinking-spinner" />
           <span>Stockfish pensando...</span>
@@ -545,12 +552,12 @@ const Board = ({
       */}
       <Chessboard
         options={{
-          position:              reviewFen ?? game.fen(),
+          position:              game.fen(),
           boardOrientation:      playerColor,
-          onPieceDrop:           reviewFen ? undefined : onDrop,
-          onSquareClick:         reviewFen ? undefined : onSquareClick,
-          canDragPiece:          reviewFen ? () => false : canDragPiece,
-          squareStyles:          reviewFen ? {} : buildSquareStyles(),
+          onPieceDrop:           onDrop,
+          onSquareClick:         onSquareClick,
+          canDragPiece:          canDragPiece,
+          squareStyles:          buildSquareStyles(),
           darkSquareStyle:       { backgroundColor: "#4a7c59" },
           lightSquareStyle:      { backgroundColor: "#f0d9b5" },
           showNotation:          settings.showCoordinates ?? true,
@@ -558,7 +565,7 @@ const Board = ({
         }}
       />
 
-      {!reviewFen && renderSquareLabels()}
+      {renderSquareLabels()}
     </div>
   );
 };

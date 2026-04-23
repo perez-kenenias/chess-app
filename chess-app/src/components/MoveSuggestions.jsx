@@ -199,7 +199,7 @@ const scoreColor = (score, mate_in) => {
 
 // ── Componente principal ─────────────────────────────────────────────────────
 
-const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
+const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight, analysisMode = false }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState(null);
@@ -208,9 +208,16 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
 
   const { turn, gameOver, isThinking } = gameStatus || {};
   const myTurn = playerColor === "white" ? "w" : "b";
-  const isMyTurn = turn === myTurn && !gameOver && !isThinking;
 
-  const opponentColor = playerColor === "white" ? "black" : "white";
+  // En modo análisis: mostrar sugerencias en CUALQUIER turno (blancas y negras)
+  const isMyTurn = analysisMode
+    ? (!gameOver && !isThinking)
+    : (turn === myTurn && !gameOver && !isThinking);
+
+  // En modo análisis el "rival" siempre es el color contrario al turno actual
+  const opponentColor = analysisMode
+    ? (turn === "w" ? "black" : "white")
+    : (playerColor === "white" ? "black" : "white");
 
   const fetchSuggestions = (currentFen) => {
     abortRef.current = false;
@@ -268,8 +275,13 @@ const MoveSuggestions = ({ fen, playerColor, gameStatus, onHighlight }) => {
       {/* Cabecera — con botón para colapsar */}
       <div className="suggestions-header" onClick={() => setExpanded((p) => !p)}>
         <div className="suggestions-title">
-          <span className="suggestions-icon">💡</span>
-          <span>Sugerencias de Stockfish</span>
+          <span className="suggestions-icon">{analysisMode ? "⚡" : "💡"}</span>
+          <span>
+            {analysisMode
+              ? `Análisis · ${turn === "w" ? "♔ Turno Blancas" : "♚ Turno Negras"}`
+              : "Sugerencias de Stockfish"
+            }
+          </span>
         </div>
         <span className="suggestions-toggle">{expanded ? "▲" : "▼"}</span>
       </div>

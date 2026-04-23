@@ -91,6 +91,8 @@ const ControlPanel = ({
   onColorChange,
   onHint,
   onNewGame,
+  analysisMode = false,
+  onToggleAnalysis,
   gameStatus = {},
   hintMove = null,
   lastMoveSan = null,
@@ -297,9 +299,17 @@ const ControlPanel = ({
         <button
           className="btn btn-hint"
           onClick={onHint}
-          disabled={isThinking || gameOver}
+          disabled={isThinking || gameOver || analysisMode}
         >
           💡 Pedir pista
+        </button>
+
+        <button
+          className={`btn btn-analysis${analysisMode ? " btn-analysis--active" : ""}`}
+          onClick={onToggleAnalysis}
+          title="Modo análisis: mueves ambos colores tú mismo. Las sugerencias aparecen en cada turno para que puedas seguir partidas de GM."
+        >
+          {analysisMode ? "⚡ Análisis activo" : "⚡ Modo análisis"}
         </button>
 
         <button
