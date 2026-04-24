@@ -98,6 +98,8 @@ const ControlPanel = ({
   lastMoveSan = null,
   clockMinutes = 0,
   onClockChange,
+  gmCommentaryEnabled = true,
+  onToggleGmCommentary,
 }) => {
   const { label, elo, color } = getLevelInfo(skillLevel);
   const { turn, inCheck, gameOver, isThinking } = gameStatus;
@@ -250,6 +252,14 @@ const ControlPanel = ({
           description="Muestra la última jugada: e4, Nf3, O-O..."
           checked={settings.showLastMoveSan ?? true}
           onChange={(val) => onSettingChange("showLastMoveSan", val)}
+        />
+
+        {/* Toggle 4: Comentario GM (consume tokens de la API de Anthropic) */}
+        <SettingRow
+          label="🎓 Comentario GM"
+          description="Análisis IA de cada jugada — usa tokens de Anthropic"
+          checked={gmCommentaryEnabled}
+          onChange={() => onToggleGmCommentary?.()}
         />
 
       </div>

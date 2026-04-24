@@ -53,3 +53,16 @@ export const evaluatePosition = (fen, depth = 12) =>
 // Devuelve: [{ uci, san, from_square, to_square, score, piece, is_capture, is_check, fen_after }]
 export const getTopMoves = (fen, count = 3, timeLimit = 1.5) =>
   api.post("/top-moves", { fen, count, time_limit: timeLimit });
+
+// Pregunta: "Explícame esta jugada como un Gran Maestro"
+// Devuelve: { titulo, razonamiento, amenaza, plan, consejo, clasificacion, eval_antes, eval_despues }
+export const getCommentary = (fenAntes, fenDespues, moveSan, moveUci, color, esBot, skillLevel = 10) =>
+  api.post("/commentary", {
+    fen_antes:   fenAntes,
+    fen_despues: fenDespues,
+    move_san:    moveSan,
+    move_uci:    moveUci,
+    color,
+    es_bot:      esBot,
+    skill_level: skillLevel,
+  });

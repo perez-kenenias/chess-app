@@ -905,6 +905,253 @@ body {
 
 
 /* ══════════════════════════════════════════
+   PANEL COMENTARIO GM (MoveCommentary)
+   ══════════════════════════════════════════ */
+
+.gm-panel {
+  background: var(--surface);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius);
+  margin-top: 12px;
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+}
+
+/* ── Cabecera del panel ── */
+.gm-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--gold-dim);
+  border-bottom: 1px solid var(--gold-border);
+}
+
+.gm-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.03em;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 14px;
+}
+
+.gm-panel-icon { font-size: 15px; }
+
+.gm-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+.gm-panel-close:hover { color: var(--text); background: var(--hover); }
+
+/* ── Cuerpo del panel ── */
+.gm-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px;
+  gap: 8px;
+}
+
+/* ── Tarjeta de jugada ── */
+.gm-move-card {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--elevated);
+}
+
+.gm-move-card--player {
+  border-color: rgba(74, 222, 128, 0.2);
+}
+
+.gm-move-card--bot {
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+/* ── Cabecera de tarjeta ── */
+.gm-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 11px;
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.gm-move-card--player .gm-card-header:hover { background: rgba(74,222,128,0.05); }
+.gm-move-card--bot    .gm-card-header:hover { background: rgba(96,165,250,0.05); }
+
+.gm-card-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.gm-piece {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.gm-card-label {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.gm-card-san {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: monospace;
+  line-height: 1.2;
+}
+
+.gm-card-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Badge de clasificación ── */
+.gm-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid;
+  font-weight: 600;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.gm-toggle {
+  font-size: 9px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+/* ── Cuerpo expandible de tarjeta ── */
+.gm-card-body {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Título de la jugada ── */
+.gm-titulo {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+/* ── Secciones (razonamiento, amenaza, plan) ── */
+.gm-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.gm-section-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  line-height: 1.5;
+}
+
+.gm-section-text {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.gm-section-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── Consejo de entrenamiento ── */
+.gm-consejo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--gold-dim);
+  border: 1px solid var(--gold-border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin-top: 2px;
+}
+
+.gm-consejo-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.gm-consejo-text {
+  font-size: 11px;
+  color: var(--gold);
+  line-height: 1.55;
+}
+
+/* ── Spinner de carga ── */
+.gm-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── Estado de error ── */
+.gm-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 8px;
+  background: rgba(224, 85, 85, 0.08);
+  border: 1px solid rgba(224, 85, 85, 0.25);
+  border-radius: 8px;
+  font-size: 11px;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+.gm-error code {
+  background: rgba(255,255,255,0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+
+/* ══════════════════════════════════════════
    MODAL DE REPLAY (GameReplayModal)
    ══════════════════════════════════════════ */
 

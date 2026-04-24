@@ -21,6 +21,16 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 - Badge **+N por rehacer** cuando hay jugadas en el stack de rehacer; **● En vivo** cuando estás en la posición actual
 - **Teclado ← → y Ctrl+Z / Ctrl+Y** para deshacer/rehacer sin tocar el ratón
 
+### Comentario de Gran Maestro (IA) 🎓
+
+> Requiere una API key de Anthropic — ver sección [Variables de entorno](#️-variables-de-entorno-api-keys).
+
+- **Análisis GM después de cada jugada** — tras cada par de movimientos (tuyo + el bot) aparece un panel con comentario a nivel de Gran Maestro para **ambas** jugadas
+- **Razonamiento táctico y posicional** — explica por qué se hizo esa jugada, qué amenaza crea o responde, y cuál es el plan a seguir
+- **Clasificación automática**: ✨ Excelente / ✓ Buena jugada / ?! Imprecisión / ? Error / ?? Error grave / 💀 Mate perdido — con color según la calidad
+- **Consejo de entrenamiento personalizado** — para tu jugada, recibe un tip específico ("aprende", "mejora" o "bien hecho") basado en lo que acaba de pasar en la partida
+- **Panel expandible** — cada tarjeta se puede colapsar para no ocupar espacio; puedes cerrar el panel entero con ✕
+
 ### Análisis y sugerencias
 - **Sugerencias inteligentes** — las 3 mejores jugadas, cada una con explicación de POR QUÉ es buena (razón táctica + contexto de ventaja)
 - **Análisis de jugada equivocada** — si no elegiste la jugada óptima, aparece una tarjeta naranja explicando qué perdiste y por qué Stockfish prefería otra jugada
@@ -61,6 +71,7 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 | Lógica de ajedrez | **chess.js v1** | Validación de movimientos, reglas |
 | Backend | **Python 3.10+** + **FastAPI** | API REST |
 | Motor de IA | **Stockfish 17/18** | Cálculo de jugadas |
+| IA comentario | **Claude (Anthropic API)** | Análisis GM de cada jugada |
 | Protocolo | **UCI** (via python-chess) | Comunicación con Stockfish |
 | HTTP Client | **Axios** | Llamadas del frontend al backend |
 | Servidor ASGI | **Uvicorn** | Ejecuta FastAPI |
@@ -71,29 +82,33 @@ Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **
 
 ```
 chess-trainer/
-├── chess-backend/          # Servidor Python (FastAPI + Stockfish)
+├── chess-backend/              # Servidor Python (FastAPI + Stockfish + IA)
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py         # Endpoints de la API REST
-│   │   └── engine.py       # Wrapper de Stockfish (python-chess)
-│   ├── requirements.txt    # Dependencias Python
-│   └── run.py              # Punto de entrada del servidor
+│   │   ├── main.py             # Endpoints de la API REST
+│   │   ├── engine.py           # Wrapper de Stockfish (python-chess)
+│   │   └── commentary_service.py  # Análisis GM con Claude (Anthropic)
+│   ├── .env                    # ← TÚ creas este archivo (ver más abajo)
+│   ├── .env.example            # Plantilla de variables de entorno
+│   ├── requirements.txt        # Dependencias Python
+│   └── run.py                  # Punto de entrada del servidor
 │
-└── chess-app/              # Aplicación React (frontend)
+└── chess-app/                  # Aplicación React (frontend)
     ├── public/
     ├── src/
     │   ├── api/
-    │   │   └── chess.js    # Llamadas HTTP al backend
+    │   │   └── chess.js        # Llamadas HTTP al backend
     │   ├── components/
-    │   │   ├── Board.jsx           # Tablero interactivo con undo/redo
-    │   │   ├── AdvantageBar.jsx    # Barra de ventaja en centipawns
-    │   │   ├── ChessClock.jsx      # Reloj de ajedrez con cuenta regresiva
-    │   │   ├── ControlPanel.jsx    # Panel de configuración + selector de reloj
-    │   │   ├── MoveHistory.jsx     # Historial + replay modal
-    │   │   └── MoveSuggestions.jsx # Sugerencias + estrategia rival + tips
-    │   ├── App.jsx          # Componente raíz
-    │   ├── App.css          # Estilos globales
-    │   └── main.jsx         # Punto de entrada de React
+    │   │   ├── Board.jsx               # Tablero interactivo con undo/redo
+    │   │   ├── AdvantageBar.jsx        # Barra de ventaja en centipawns
+    │   │   ├── ChessClock.jsx          # Reloj de ajedrez con cuenta regresida
+    │   │   ├── ControlPanel.jsx        # Panel de configuración + selector de reloj
+    │   │   ├── MoveCommentary.jsx      # Panel comentario GM (jugador + bot)
+    │   │   ├── MoveHistory.jsx         # Historial + replay modal
+    │   │   └── MoveSuggestions.jsx     # Sugerencias + estrategia rival + tips
+    │   ├── App.jsx              # Componente raíz
+    │   ├── App.css              # Estilos globales
+    │   └── main.jsx             # Punto de entrada de React
     ├── package.json
     └── vite.config.js
 ```
@@ -105,6 +120,7 @@ chess-trainer/
 - **Python 3.10** o superior
 - **Node.js 18** o superior
 - **Stockfish** (motor de ajedrez)
+- **API key de Anthropic** — para el comentario GM (opcional, pero necesaria para esa función)
 
 ---
 
@@ -152,23 +168,60 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Instalar dependencias del frontend
+### 4. Variables de entorno (API Keys) {#️-variables-de-entorno-api-keys}
+
+El backend necesita un archivo `.env` dentro de la carpeta `chess-backend/` para funcionar con el comentario GM.
+
+**Paso 1 — Consigue tu API key de Anthropic:**
+
+1. Ve a https://console.anthropic.com y crea una cuenta (o inicia sesión)
+2. En el panel izquierdo haz clic en **API Keys**
+3. Pulsa **Create Key**, dale un nombre (ej. `chess-trainer`) y copia la clave — empieza con `sk-ant-...`
+4. Guárdala en un lugar seguro; solo se muestra una vez
+
+**Paso 2 — Crea el archivo `.env` en Windows:**
+
+Abre el Bloc de notas y escribe exactamente esto (pega tu clave real):
+
+```
+ANTHROPIC_API_KEY=sk-ant-TU_CLAVE_REAL_AQUI
+
+# Solo si Stockfish NO está en el PATH del sistema:
+# STOCKFISH_PATH=C:\stockfish\stockfish-windows-x86-64-avx2.exe
+```
+
+Luego guarda como `chess-backend\.env`:
+- En Bloc de notas: **Archivo → Guardar como**
+- Navega a la carpeta `chess-backend`
+- En "Nombre de archivo" escribe: `.env` (con el punto)
+- En "Tipo" selecciona: **Todos los archivos (\*.\*)**
+- Pulsa **Guardar**
+
+> ⚠️ El archivo se llama `.env` (sin nombre antes del punto). Si Windows lo guarda como `.env.txt` no funcionará — verifica en el Explorador de Archivos que no tenga extensión `.txt`.
+
+> 🔒 El `.env` está en `.gitignore` — nunca se sube a GitHub. Tu clave está segura.
+
+**Sin API key:** La app funciona perfectamente (Stockfish, sugerencias, reloj, todo) — solo el panel 🎓 de comentario GM no aparecerá.
+
+### 5. Instalar dependencias del frontend
 
 ```bash
 cd ../chess-app
 npm install
 ```
 
-### 5. Ejecutar el backend
+### 6. Ejecutar el backend
 
 Abre una terminal y activa el entorno virtual si no lo está:
 
 ```bash
 cd chess-backend
 
-# Solo en Windows — define la ruta a Stockfish:
-# (cambia el nombre del .exe al que descargaste)
-$env:STOCKFISH_PATH = "C:\stockfish\stockfish-windows-x86-64.exe"
+# Activa el entorno virtual si no lo has hecho ya:
+# Windows:
+venv\Scripts\activate
+# macOS / Linux:
+source venv/bin/activate
 
 # Iniciar el servidor
 python run.py
@@ -181,11 +234,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 INFO:     Application startup complete.
 ```
 
-> **Nota:** Si instalaste Stockfish con `brew install` o `apt install`, no necesitas definir `STOCKFISH_PATH` — se detecta automáticamente.
+> **Nota:** Si instalaste Stockfish con `brew install` o `apt install`, no necesitas `STOCKFISH_PATH` en el `.env` — se detecta automáticamente.
 
-> **Tip Windows:** Para no tener que escribir `$env:STOCKFISH_PATH` cada vez, agrégala a las **Variables de entorno del sistema** en el Panel de Control → Sistema → Configuración avanzada del sistema.
+> **Tip Windows (Stockfish):** Si no quieres poner `STOCKFISH_PATH` en el `.env`, también puedes agregarlo a las **Variables de entorno del sistema** en Panel de Control → Sistema → Configuración avanzada del sistema.
 
-### 6. Ejecutar el frontend
+### 7. Ejecutar el frontend
 
 Abre **otra terminal**:
 
@@ -200,7 +253,7 @@ Verás:
   ➜  Local:   http://localhost:5173/
 ```
 
-### 7. Abrir la aplicación
+### 8. Abrir la aplicación
 
 Abre tu navegador en: **http://localhost:5173**
 
@@ -214,12 +267,13 @@ La API REST corre en `http://localhost:8000`. Puedes explorarla en:
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/health` | Verifica que el servidor y Stockfish estén activos |
+| POST | `/api/new-game` | Devuelve el FEN de la posición inicial |
 | POST | `/api/move` | El bot calcula y devuelve su jugada |
 | POST | `/api/hint` | Devuelve la mejor jugada sin ejecutarla |
 | POST | `/api/top-moves` | Devuelve las N mejores jugadas (para sugerencias) |
 | POST | `/api/evaluate` | Evalúa la posición en centipawns |
 | GET | `/api/legal-moves` | Lista todos los movimientos legales para una posición |
-| POST | `/api/new-game` | Devuelve el FEN de la posición inicial |
+| POST | `/api/commentary` | 🎓 Análisis GM de una jugada (requiere `ANTHROPIC_API_KEY`) |
 
 ---
 
@@ -229,7 +283,13 @@ La API REST corre en `http://localhost:8000`. Puedes explorarla en:
 2. **Ajusta el nivel** del bot (0 = muy fácil, 20 = maestro)
 3. **Selecciona el tiempo** del reloj (1', 3', 5', 10', 30' o ∞) — opcional
 4. **Mueve tus piezas** arrastrándolas o haciendo clic (clic en pieza → clic en destino)
-5. **Consulta las sugerencias** debajo del tablero:
+5. **Lee el análisis GM** — tras cada jugada tuya y la respuesta del bot, aparece el panel 🎓 con:
+   - Tu jugada clasificada (Excelente / Buena / Imprecisión / Error / Mate perdido)
+   - Por qué hiciste esa jugada, qué amenaza crea y el plan a seguir
+   - Lo mismo para la jugada del bot, para que entiendas su razonamiento
+   - Un consejo de entrenamiento personal al pie de tu tarjeta
+   - Ciérralo con ✕ o colápsa cada tarjeta haciendo clic en su cabecera
+6. **Consulta las sugerencias** debajo del tablero:
    - El banner naranja muestra la estrategia actual del rival
    - Cada tarjeta explica la jugada y lo que el rival podría responder
    - El tip azul al pie da un consejo de entrenamiento para esa posición

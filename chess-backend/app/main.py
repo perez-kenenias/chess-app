@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 import chess
 
 from app.engine import chess_engine
+from app.commentary_service import generar_comentario
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,16 @@ class EvaluateRequest(BaseModel):
         le=25,
         description="Profundidad de análisis (más = más preciso pero más lento)",
     )
+
+
+class CommentaryRequest(BaseModel):
+    fen_antes: str   = Field(description="FEN de la posición ANTES de la jugada")
+    fen_despues: str = Field(description="FEN de la posición DESPUÉS de la jugada")
+    move_san: str    = Field(description="Jugada en notación algebraica, ej: 'Nf3'")
+    move_uci: str    = Field(description="Jugada en notación UCI, ej: 'g1f3'")
+    color: str       = Field(description="'white' o 'black'")
+    es_bot: bool     = Field(description="True si fue jugada del motor")
+    skill_level: int = Field(default=10, ge=0, le=20)
 
 
 class NewGameResponse(BaseModel):
@@ -259,6 +270,42 @@ def evaluate_position(request: EvaluateRequest):
         raise HTTPException(status_code=400, detail=f"FEN inválido: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error del motor: {str(e)}")
+
+
+@app.post("/api/commentary")
+async def get_commentary(request: CommentaryRequest):
+    """
+    Genera comentario de nivel Gran Maestro para una jugada.
+
+    Combina la evaluación numérica de Stockfish con análisis en lenguaje
+    natural de Claude para explicar el propósito táctico y estratégico
+    de cada movimiento — tanto del jugador como del rival.
+
+    Responde con:
+      - titulo:        Frase corta que resume la jugada
+      - razonamiento:  Análisis táctico/posicional profundo (2-3 oraciones)
+      - amenaza:       Qué amenaza concreta crea o neutraliza
+      - plan:          Plan estratégico a seguir
+      - consejo:       Consejo de entrenamiento (solo para jugadas del humano)
+      - clasificacion: Excelente / Buena jugada / Imprecisión / Error / etc.
+      - eval_antes:    Evaluación Stockfish antes (centipawns)
+      - eval_despues:  Evaluación Stockfish después (centipawns)
+    """
+    try:
+        result = await generar_comentario(
+            fen_antes=request.fen_antes,
+            fen_despues=request.fen_despues,
+            move_san=request.move_san,
+            move_uci=request.move_uci,
+            color_jugada=request.color,
+            es_bot=request.es_bot,
+            skill_level=request.skill_level,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"FEN inválido: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando comentario: {str(e)}")
 
 
 @app.get("/api/legal-moves")

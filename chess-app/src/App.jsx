@@ -16,8 +16,9 @@ import AdvantageBar    from "./components/AdvantageBar";
 import MoveHistory     from "./components/MoveHistory";
 import MoveSuggestions   from "./components/MoveSuggestions";
 import MoveAnalysisCard  from "./components/MoveAnalysisCard";
+import MoveCommentary    from "./components/MoveCommentary";
 import ChessClock        from "./components/ChessClock";
-import { checkHealth, getHint } from "./api/chess";
+import { checkHealth, getHint, getCommentary } from "./api/chess";
 import "./App.css";
 
 const INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -67,6 +68,16 @@ function App() {
   // missedMoveHighlight = resaltado en el tablero de la jugada que debió hacerse
   const [missedMoveHighlight, setMissedMoveHighlight] = useState(null);
 
+  // ── Comentario de Gran Maestro ────────────────────────────────────────────────
+  // lastBotMove = { san, uci, fenBefore, fenAfter } — última jugada del bot
+  const [lastBotMove, setLastBotMove]         = useState(null);
+  // commentary = { loading, player: {...}, bot: {...} } — comentario GM actual
+  const [commentary, setCommentary]           = useState(null);
+  // gmCommentaryEnabled — el usuario puede desactivarlo para no consumir tokens
+  const [gmCommentaryEnabled, setGmCommentaryEnabled] = useState(true);
+  // Ref para acceder a lastPlayerMove dentro de efectos async sin stale closure
+  const lastPlayerMoveRef = useRef(null);
+
   // ── Refs para el reloj ───────────────────────────────────────────────────────
   const gameStatusRef = useRef(gameStatus);
   useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
@@ -99,6 +110,35 @@ function App() {
     setMissedMoveHighlight(null);
   }, []);
 
+  // ── useEffect: sincronizar ref con el estado de lastPlayerMove ───────────────
+  useEffect(() => { lastPlayerMoveRef.current = lastPlayerMove; }, [lastPlayerMove]);
+
+  // ── useEffect: pedir comentario GM cuando el bot responde ───────────────────
+  useEffect(() => {
+    if (!lastBotMove) return;
+    if (!gmCommentaryEnabled) return;   // ← desactivado por el usuario
+    const pm = lastPlayerMoveRef.current;
+    if (!pm) return;
+
+    setCommentary({ loading: true, player: null, bot: null });
+
+    const botColor = playerColor === "white" ? "black" : "white";
+
+    Promise.all([
+      getCommentary(pm.fenBefore, pm.fenAfter, pm.san, pm.uci, playerColor, false, skillLevel),
+      getCommentary(lastBotMove.fenBefore, lastBotMove.fenAfter, lastBotMove.san, lastBotMove.uci, botColor, true, skillLevel),
+    ])
+      .then(([pRes, bRes]) => {
+        setCommentary({ loading: false, player: pRes.data, bot: bRes.data });
+      })
+      .catch((err) => {
+        const detail = err?.response?.data?.detail ?? err?.message ?? String(err);
+        console.error("❌ Error comentario GM:", detail);
+        setCommentary({ loading: false, error: true, errorMsg: detail });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastBotMove, gmCommentaryEnabled]);
+
   /**
    * handleWrongMove — recibe el análisis de la jugada subóptima desde MoveSuggestions.
    * Actualiza el estado y extrae las casillas para resaltar en el tablero.
@@ -120,19 +160,31 @@ function App() {
 
   /**
    * handleMoveMade — llegada cada vez que Board hace una jugada.
-   * Agrega al historial y borra el stack de rehacer (nueva línea).
+   * Agrega al historial, guarda datos para el comentario GM y borra el stack de rehacer.
+   *
+   * Board.jsx ahora pasa también:
+   *   uci:       jugada en formato UCI ("e2e4", "g1f3")
+   *   fenBefore: FEN antes del movimiento (para el comentario GM)
    */
-  const handleMoveMade = useCallback(({ san, color, fen: moveFen }) => {
+  const handleMoveMade = useCallback(({ san, uci = "", color, fen: moveFen, fenBefore }) => {
     setMoves(prev => [...prev, { san, color }]);
     if (moveFen) setFenHistory(prev => [...prev, moveFen]);
     // Al hacer una jugada nueva se descarta cualquier "futuro" almacenado
     setFutureMoves([]);
     setFutureFenHistory([]);
-    // Guardar la jugada del JUGADOR (no la del bot) para análisis de error
-    // fen en este punto es el FEN ANTES del movimiento (state no ha re-renderizado)
+
     if (!analysisMode && color === playerColor) {
-      setLastPlayerMove({ san, fenBefore: fen });
+      // Jugada del JUGADOR: guardar para análisis de error y comentario GM
+      const fb = fenBefore ?? fen;
+      setLastPlayerMove({ san, fenBefore: fb, uci, fenAfter: moveFen });
+      // El ref se actualiza en el useEffect de sincronización
     }
+
+    if (!analysisMode && color !== playerColor) {
+      // Jugada del BOT: disparar comentario GM al recibir la respuesta
+      setLastBotMove({ san, uci, fenBefore: fenBefore ?? fen, fenAfter: moveFen });
+    }
+
     _resetUI();
   }, [_resetUI, analysisMode, playerColor, fen]);
 
@@ -149,6 +201,8 @@ function App() {
     setGameStatus({ turn: "w" });
     setEvaluation({ score: 0, mateIn: null });
     setLastPlayerMove(null);
+    setLastBotMove(null);
+    setCommentary(null);
     setWrongMoveInfo(null);
     setOpponentSquares({});
     _resetUI();
@@ -169,6 +223,8 @@ function App() {
       setGameStatus({ turn: "w" });
       setEvaluation({ score: 0, mateIn: null });
       setLastPlayerMove(null);
+      setLastBotMove(null);
+      setCommentary(null);
       setWrongMoveInfo(null);
       setOpponentSquares({});
       _resetUI();
@@ -228,6 +284,8 @@ function App() {
     setFen(newFen);
     setEvaluation({ score: 0, mateIn: null });
     setLastPlayerMove(null);
+    setLastBotMove(null);
+    setCommentary(null);
     _resetUI();
   }, [moves, fenHistory, gameStatus.isThinking, analysisMode, _resetUI]);
 
@@ -454,6 +512,18 @@ function App() {
             lastMoveSan={lastMoveSan}
             clockMinutes={clockMinutes}
             onClockChange={handleClockChange}
+            gmCommentaryEnabled={gmCommentaryEnabled}
+            onToggleGmCommentary={() => {
+              setGmCommentaryEnabled(p => !p);
+              if (gmCommentaryEnabled) setCommentary(null);
+            }}
+          />
+
+          {/* Comentario de Gran Maestro — explica la jugada del jugador Y la del rival */}
+          <MoveCommentary
+            commentary={commentary}
+            playerColor={playerColor}
+            onClose={() => setCommentary(null)}
           />
 
           {/*

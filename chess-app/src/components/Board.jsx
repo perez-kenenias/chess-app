@@ -212,7 +212,8 @@ const Board = ({
       setGame(botGame);
       gameRef.current = botGame;
       onFenChange?.(newFen);
-      onMoveMade?.({ san: move.san, color: playerColor === "white" ? "black" : "white", fen: newFen });
+      // Pasamos fenBefore (currentGame.fen()) para el comentario GM del rival
+      onMoveMade?.({ san: move.san, uci: move.from + move.to + (move.promotion || ""), color: playerColor === "white" ? "black" : "white", fen: newFen, fenBefore: currentGame.fen() });
       reportStatus(botGame, false);
 
       // Evaluar la posición para la barra de ventaja (no bloqueante)
@@ -248,8 +249,11 @@ const Board = ({
   const applyPlayerMove = useCallback((fromSq, toSq) => {
     setBotError(null);
 
+    // Capturar FEN antes de aplicar el movimiento (para el comentario GM)
+    const fenBefore = gameRef.current.fen();
+
     // Crear una copia del juego actual y aplicar el movimiento
-    const copy = new Chess(gameRef.current.fen());
+    const copy = new Chess(fenBefore);
     let move;
     try {
       // promotion: "q" = coronación automática a reina (lo más habitual)
@@ -269,8 +273,8 @@ const Board = ({
     setGame(copy);
     gameRef.current = copy;
     onFenChange?.(newFen);
-    // Pasamos el fen resultante para que App.jsx lo guarde en fenHistory
-    onMoveMade?.({ san: move.san, color: playerColor, fen: newFen });
+    // Pasamos fenBefore y uci para el análisis de comentario GM
+    onMoveMade?.({ san: move.san, uci: move.from + move.to + (move.promotion || ""), color: playerColor, fen: newFen, fenBefore });
     reportStatus(copy, false);
 
     // Si la partida no terminó, pedirle al bot que responda
