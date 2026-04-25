@@ -93,7 +93,7 @@ chess-trainer/
 │   ├── requirements.txt        # Dependencias Python
 │   └── run.py                  # Punto de entrada del servidor
 │
-└── chess-app/                  # Aplicación React (frontend)
+└── chess-frontend/                  # Aplicación React (frontend)
     ├── public/
     ├── src/
     │   ├── api/
@@ -150,23 +150,34 @@ brew install stockfish
 sudo apt update && sudo apt install stockfish
 ```
 
-### 3. Configurar el backend
+### 3. Preparar el backend (solo la primera vez)
 
 ```bash
 cd chess-backend
+```
 
-# Crear entorno virtual
+**Crear el entorno virtual:**
+```bash
 python -m venv venv
+```
 
-# Activar el entorno virtual
-# Windows:
+**Activar el entorno virtual:**
+```bash
+# Windows (PowerShell):
 venv\Scripts\activate
+
 # macOS / Linux:
 source venv/bin/activate
+```
 
-# Instalar dependencias
+Sabrás que está activado porque el prompt de la terminal mostrará `(venv)` al inicio.
+
+**Instalar todas las dependencias Python:**
+```bash
 pip install -r requirements.txt
 ```
+
+Esto instala FastAPI, Uvicorn, python-chess, Anthropic y el resto. Solo tienes que hacerlo **una vez** (o si alguien actualiza el `requirements.txt`).
 
 ### 4. Variables de entorno (API Keys) {#️-variables-de-entorno-api-keys}
 
@@ -203,47 +214,54 @@ Luego guarda como `chess-backend\.env`:
 
 **Sin API key:** La app funciona perfectamente (Stockfish, sugerencias, reloj, todo) — solo el panel 🎓 de comentario GM no aparecerá.
 
-### 5. Instalar dependencias del frontend
+### 5. Instalar dependencias del frontend (solo la primera vez)
 
 ```bash
-cd ../chess-app
+cd ../chess-frontend
 npm install
 ```
 
-### 6. Ejecutar el backend
+---
 
-Abre una terminal y activa el entorno virtual si no lo está:
+## ▶ Cómo ejecutar la app (cada vez que quieras jugar)
+
+Necesitas **dos terminales abiertas al mismo tiempo**: una para el backend y otra para el frontend.
+
+### Terminal 1 — Backend (Stockfish + IA)
 
 ```bash
+# 1. Entrar a la carpeta del backend
 cd chess-backend
 
-# Activa el entorno virtual si no lo has hecho ya:
-# Windows:
+# 2. Activar el entorno virtual
+# Windows (PowerShell):
 venv\Scripts\activate
 # macOS / Linux:
 source venv/bin/activate
 
-# Iniciar el servidor
+# 3. Arrancar el servidor
 python run.py
 ```
 
-Debes ver:
+Debes ver esto en la terminal:
 ```
+✅ ANTHROPIC_API_KEY cargada correctamente (sk-ant-...)
 ✅ Stockfish iniciado correctamente
 INFO:     Uvicorn running on http://0.0.0.0:8000
 INFO:     Application startup complete.
 ```
 
-> **Nota:** Si instalaste Stockfish con `brew install` o `apt install`, no necesitas `STOCKFISH_PATH` en el `.env` — se detecta automáticamente.
+> ⚠️ **Error `ModuleNotFoundError`?** — Significa que falta hacer el `pip install`. Ejecuta `pip install -r requirements.txt` con el entorno virtual activado y vuelve a intentar.
 
-> **Tip Windows (Stockfish):** Si no quieres poner `STOCKFISH_PATH` en el `.env`, también puedes agregarlo a las **Variables de entorno del sistema** en Panel de Control → Sistema → Configuración avanzada del sistema.
+> **Nota:** Si instalaste Stockfish con `brew` o `apt`, no necesitas `STOCKFISH_PATH` en el `.env` — se detecta automáticamente.
 
-### 7. Ejecutar el frontend
-
-Abre **otra terminal**:
+### Terminal 2 — Frontend (interfaz React)
 
 ```bash
-cd chess-app
+# 1. Entrar a la carpeta del frontend
+cd chess-frontend
+
+# 2. Arrancar el servidor de desarrollo
 npm run dev
 ```
 
@@ -253,9 +271,9 @@ Verás:
   ➜  Local:   http://localhost:5173/
 ```
 
-### 8. Abrir la aplicación
+### Abrir la aplicación
 
-Abre tu navegador en: **http://localhost:5173**
+Con ambas terminales corriendo, abre tu navegador en: **http://localhost:5173**
 
 ---
 
