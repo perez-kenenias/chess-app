@@ -44,6 +44,7 @@ function App() {
     showCoordinates:  true,
     showSquareLabels: false,
     showLastMoveSan:  true,
+    boardTheme:       "classic",
   });
 
   // ── Modo análisis libre ───────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ function App() {
   // commentary = { loading, player: {...}, bot: {...} } — comentario GM actual
   const [commentary, setCommentary]           = useState(null);
   // gmCommentaryEnabled — el usuario puede desactivarlo para no consumir tokens
-  const [gmCommentaryEnabled, setGmCommentaryEnabled] = useState(true);
+  const [gmCommentaryEnabled, setGmCommentaryEnabled] = useState(false);
   // Ref para acceder a lastPlayerMove dentro de efectos async sin stale closure
   const lastPlayerMoveRef = useRef(null);
 

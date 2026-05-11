@@ -262,6 +262,26 @@ const ControlPanel = ({
           onChange={() => onToggleGmCommentary?.()}
         />
 
+        {/* Selector de tema del tablero */}
+        <div className="setting-row">
+          <div className="setting-info">
+            <span className="setting-label">Tema del tablero</span>
+            <span className="setting-desc">Colores de las casillas</span>
+          </div>
+          <select
+            value={settings.boardTheme ?? "classic"}
+            onChange={(e) => onSettingChange("boardTheme", e.target.value)}
+            className="theme-select"
+          >
+            <option value="classic">Clásico (verde)</option>
+            <option value="blue">Azul</option>
+            <option value="brown">Marrón</option>
+            <option value="gray">Gris</option>
+            <option value="red">Rojo / Dorado</option>
+            <option value="purple">Púrpura</option>
+          </select>
+        </div>
+
       </div>
 
       {/* ── 6. Pista activa ── */}

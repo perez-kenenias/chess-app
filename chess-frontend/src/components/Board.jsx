@@ -35,6 +35,15 @@ const SQUARES_BLACK = [...RANKS].reverse().flatMap((rank) =>
 
 const INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+const BOARD_THEMES = {
+  classic: { dark: "#4a7c59", light: "#f0d9b5" },
+  blue:    { dark: "#4169a8", light: "#d9e6f5" },
+  brown:   { dark: "#a0652a", light: "#f2d9b1" },
+  gray:    { dark: "#5c5c5c", light: "#cecece" },
+  red:     { dark: "#8b2635", light: "#e8c87a" },
+  purple:  { dark: "#5e4185", light: "#d9ccf0" },
+};
+
 // ── Componente ────────────────────────────────────────────────────────────────
 
 const Board = ({
@@ -504,11 +513,11 @@ const Board = ({
           >
             <span
               style={{
-                fontSize:   Math.max(8, cellSize * 0.17) + "px",
+                fontSize:   Math.max(11, cellSize * 0.22) + "px",
                 fontFamily: "monospace",
-                fontWeight: "600",
-                color:      "rgba(255,255,255,0.55)",
-                textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                fontWeight: "800",
+                color:      "rgba(255,255,255,0.90)",
+                textShadow: "0 1px 4px rgba(0,0,0,0.9)",
                 userSelect: "none",
                 lineHeight: 1,
               }}
@@ -579,8 +588,8 @@ const Board = ({
           onSquareClick:         onSquareClick,
           canDragPiece:          canDragPiece,
           squareStyles:          buildSquareStyles(),
-          darkSquareStyle:       { backgroundColor: "#4a7c59" },
-          lightSquareStyle:      { backgroundColor: "#f0d9b5" },
+          darkSquareStyle:       { backgroundColor: (BOARD_THEMES[settings.boardTheme] ?? BOARD_THEMES.classic).dark },
+          lightSquareStyle:      { backgroundColor: (BOARD_THEMES[settings.boardTheme] ?? BOARD_THEMES.classic).light },
           showNotation:          settings.showCoordinates ?? true,
           animationDurationInMs: 200,
         }}
