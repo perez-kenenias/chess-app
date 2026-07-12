@@ -1,347 +1,283 @@
 # ♟ Chess Trainer
 
-Aplicación web de entrenamiento de ajedrez contra la inteligencia artificial **Stockfish**. Diseñada especialmente para principiantes que quieren mejorar su juego con explicaciones claras en español.
+Aplicación web para entrenar ajedrez contra **Stockfish**, con sugerencias,
+análisis de partidas (Game Review estilo chess.com), comentario de Gran Maestro
+por IA y mini-cursos, todo explicado en español para principiantes.
+
+- **Frontend:** React 19 + Vite (interfaz)
+- **Backend:** Python + FastAPI + Stockfish (motor de ajedrez vía UCI)
+- **IA opcional:** Claude (Anthropic) para el comentario de Gran Maestro
 
 ---
 
-## ✨ Características
+## 🔌 Puertos (resumen rápido)
 
-### Juego
-- **Juega contra Stockfish** con niveles de dificultad del 0 (principiante) al 20 (maestro)
-- **Soporte para blancas y negras** — el tablero se gira automáticamente
-- **Jaque resaltado** — el rey en jaque se muestra en rojo
-- **Movimientos legales** — al seleccionar una pieza, aparecen puntos en las casillas a donde puede moverse
+| Servicio | URL | Para qué |
+|----------|-----|----------|
+| **Frontend (la app)** | **http://localhost:5173** | 👈 Aquí juegas. Es la única URL que necesitas abrir. |
+| Backend (API) | http://localhost:8000 | La API REST. El frontend la usa por detrás. |
+| Documentación API | http://localhost:8000/docs | Explorador interactivo de los endpoints (Swagger). |
+| Healthcheck | http://localhost:8000/api/health | Comprueba que Stockfish está vivo. |
 
-### Deshacer / Rehacer
-- **Flechas ⏮ ◀ ▶ ⏭** debajo del tablero — deshacer y rehacer jugadas como en chess.com o Word
-- **⏮ / ⏭** deshacer todo de una vez / volver al final
-- En modo normal deshace 2 medias jugadas a la vez (tu jugada + la del bot) para que siempre vuelva a ser tu turno
-- En modo análisis deshace 1 medio movimiento a la vez
-- Desde cualquier posición puedes hacer un movimiento diferente y se descarta el "futuro" almacenado (nueva línea)
-- Badge **+N por rehacer** cuando hay jugadas en el stack de rehacer; **● En vivo** cuando estás en la posición actual
-- **Teclado ← → y Ctrl+Z / Ctrl+Y** para deshacer/rehacer sin tocar el ratón
-
-### Comentario de Gran Maestro (IA) 🎓
-
-> Requiere una API key de Anthropic — ver sección [Variables de entorno](#️-variables-de-entorno-api-keys).
-
-- **Análisis GM después de cada jugada** — tras cada par de movimientos (tuyo + el bot) aparece un panel con comentario a nivel de Gran Maestro para **ambas** jugadas
-- **Razonamiento táctico y posicional** — explica por qué se hizo esa jugada, qué amenaza crea o responde, y cuál es el plan a seguir
-- **Clasificación automática**: ✨ Excelente / ✓ Buena jugada / ?! Imprecisión / ? Error / ?? Error grave / 💀 Mate perdido — con color según la calidad
-- **Consejo de entrenamiento personalizado** — para tu jugada, recibe un tip específico ("aprende", "mejora" o "bien hecho") basado en lo que acaba de pasar en la partida
-- **Panel expandible** — cada tarjeta se puede colapsar para no ocupar espacio; puedes cerrar el panel entero con ✕
-
-### Análisis y sugerencias
-- **Sugerencias inteligentes** — las 3 mejores jugadas, cada una con explicación de POR QUÉ es buena (razón táctica + contexto de ventaja)
-- **Análisis de jugada equivocada** — si no elegiste la jugada óptima, aparece una tarjeta naranja explicando qué perdiste y por qué Stockfish prefería otra jugada
-- **Amenazas del rival en el tablero** — las piezas del oponente que te amenazan se resaltan en naranja; tus piezas bajo ataque muestran un borde rojo, para que veas visualmente el peligro
-- **Estrategia del rival** — un banner explica qué busca el oponente en la posición actual (apertura / medio / final)
-- **Respuesta del rival** — cada sugerencia indica qué puede hacer inmediatamente el rival después de esa jugada
-- **Badge ★ Mejor** — la primera tarjeta está marcada con borde dorado para identificar la opción óptima
-- **Tips de entrenamiento** — consejos rotativos para progresar de amateur a avanzado (apertura, táctica, endgame...)
-- **Pista en el tablero** — resalta en azul la casilla de origen y destino de la mejor jugada
-- **Barra de ventaja** — muestra quién va ganando en centipawns en tiempo real
-
-### Reloj de ajedrez
-- **Selector de tiempo** en el panel de control: 1', 3', 5', 10', 30' o sin límite (∞)
-- **Reloj visible** con cuenta regresiva para blancas y negras
-- El jugador activo se resalta en dorado; tiempo bajo (< 10 s) parpadea en rojo
-- El reloj se pausa automáticamente mientras el bot piensa o el jugador revisa el historial
-
-### Modo análisis libre
-- **⚡ Modo análisis** — el jugador controla ambos colores (blancas Y negras); el bot nunca responde
-- Las sugerencias de Stockfish aparecen en **cada turno** (ya sea blancas o negras) mostrando la mejor jugada disponible
-- El encabezado del panel indica el turno activo: `⚡ Análisis · ♔ Turno Blancas` / `⚡ Análisis · ♚ Turno Negras`
-- Ideal para reproducir partidas de GM paso a paso y entender las decisiones de ambos bandos
-- Se activa/desactiva con un clic; la partida en curso no se reinicia
-
-### Historial y replay
-- **Historial de jugadas** en notación algebraica estándar (SAN)
-- **Replay de partida** — modal con reproducción automática (play/pausa) y control posición a posición
-- Nombre de casillas opcional en el tablero (a1, e4, h8...)
+> **Abre siempre http://localhost:5173.** El puerto 8000 es solo para depurar.
 
 ---
 
-## 🛠 Stack tecnológico
+## 🐳 Opción A — Correr con Docker (recomendado)
 
-| Capa | Tecnología | Función |
-|------|-----------|---------|
-| Frontend | **React 19** + **Vite 8** | Interfaz de usuario |
-| UI Tablero | **react-chessboard v5** | Renderizado visual del tablero |
-| Lógica de ajedrez | **chess.js v1** | Validación de movimientos, reglas |
-| Backend | **Python 3.10+** + **FastAPI** | API REST |
-| Motor de IA | **Stockfish 17/18** | Cálculo de jugadas |
-| IA comentario | **Claude (Anthropic API)** | Análisis GM de cada jugada |
-| Protocolo | **UCI** (via python-chess) | Comunicación con Stockfish |
-| HTTP Client | **Axios** | Llamadas del frontend al backend |
-| Servidor ASGI | **Uvicorn** | Ejecuta FastAPI |
+No necesitas instalar Python, Node ni Stockfish: todo vive dentro de los contenedores.
 
----
+### Requisitos
+- **Docker Desktop** (Windows/Mac) o **Docker Engine + plugin `docker-compose-plugin`** (Linux).
+- **Docker Desktop debe estar ABIERTO y corriendo** antes de escribir cualquier comando — busca el ícono de la ballena 🐳 en la barra de tareas/menú y espera a que diga "Docker Desktop is running". Si intentas `docker compose up` con Docker Desktop cerrado, el comando falla con un error de conexión (`error during connect` / `docker daemon is not running`).
+- En Windows, Docker Desktop debe usar el backend **WSL2** (Settings → General → "Use the WSL 2 based engine"). Es la opción por defecto en instalaciones nuevas.
 
-## 📁 Estructura del proyecto
-
+### 1. (Opcional) API key para el comentario GM
+```bash
+cd chess-backend
+cp .env.example .env
+# Edita .env y pega tu ANTHROPIC_API_KEY (ver sección "Variables de entorno")
+cd ..
 ```
-chess-trainer/
-├── chess-backend/              # Servidor Python (FastAPI + Stockfish + IA)
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py             # Endpoints de la API REST
-│   │   ├── engine.py           # Wrapper de Stockfish (python-chess)
-│   │   └── commentary_service.py  # Análisis GM con Claude (Anthropic)
-│   ├── .env                    # ← TÚ creas este archivo (ver más abajo)
-│   ├── .env.example            # Plantilla de variables de entorno
-│   ├── requirements.txt        # Dependencias Python
-│   └── run.py                  # Punto de entrada del servidor
-│
-└── chess-frontend/                  # Aplicación React (frontend)
-    ├── public/
-    ├── src/
-    │   ├── api/
-    │   │   └── chess.js        # Llamadas HTTP al backend
-    │   ├── components/
-    │   │   ├── Board.jsx               # Tablero interactivo con undo/redo
-    │   │   ├── AdvantageBar.jsx        # Barra de ventaja en centipawns
-    │   │   ├── ChessClock.jsx          # Reloj de ajedrez con cuenta regresida
-    │   │   ├── ControlPanel.jsx        # Panel de configuración + selector de reloj
-    │   │   ├── MoveCommentary.jsx      # Panel comentario GM (jugador + bot)
-    │   │   ├── MoveHistory.jsx         # Historial + replay modal
-    │   │   └── MoveSuggestions.jsx     # Sugerencias + estrategia rival + tips
-    │   ├── App.jsx              # Componente raíz
-    │   ├── App.css              # Estilos globales
-    │   └── main.jsx             # Punto de entrada de React
-    ├── package.json
-    └── vite.config.js
+Si te lo saltas, la app funciona igual — solo el panel 🎓 de comentario GM no aparecerá.
+
+### 2. Levantar todo con un comando
+Desde la carpeta raíz `chess-trainer/`:
+```bash
+docker compose up --build
+```
+Esto:
+1. Construye el backend (Python 3.11 + Stockfish instalado vía `apt`).
+2. Construye el frontend (build de producción con Vite, servido por nginx).
+3. Arranca el backend y espera a que su healthcheck confirme que Stockfish está listo.
+4. Arranca el frontend; su nginx reenvía todo lo que llega a `/api/*` al backend.
+
+Verás algo como:
+```
+✔ Container chess-trainer-backend   Healthy
+✔ Container chess-trainer-frontend  Started
+```
+La primera vez tarda más (descarga imágenes base + `npm ci` + `pip install`).
+El backend puede tardar hasta ~30-60s extra en pasar a "Healthy" porque
+Stockfish se precalienta al arrancar — es normal, espera a ver "Healthy".
+
+### 3. Verificar que los dos contenedores están corriendo
+Antes de abrir el navegador, confirma en otra terminal:
+```bash
+docker compose ps
+```
+Debes ver **dos** filas, ambas en estado `Up` (o `Up (healthy)`):
+```
+NAME                       STATUS
+chess-trainer-backend      Up (healthy)
+chess-trainer-frontend     Up (healthy)
+```
+- Si `chess-trainer-frontend` **no aparece** o está en `Created` (nunca arrancó):
+  es porque está esperando a que el backend esté `healthy` y este nunca lo logró.
+  Revisa `docker compose logs backend`.
+- Si algún contenedor dice `Exited` o `Restarting`: revisa sus logs
+  (`docker compose logs backend` / `docker compose logs frontend`) — el error
+  exacto va a estar ahí.
+
+### 4. Abrir la app
+👉 **http://localhost:5173**
+
+Si `localhost` no responde en el navegador (pero `docker compose ps` sí muestra
+los dos contenedores `Up`), prueba **http://127.0.0.1:5173** — en algunas
+configuraciones de Docker Desktop en Windows `localhost` no resuelve bien
+aunque el puerto sí esté publicado.
+
+El frontend llama a `/api/...` (mismo origen, sin CORS) y nginx lo reenvía al backend.
+
+### Comandos útiles
+```bash
+docker compose up -d --build        # levantar en segundo plano
+docker compose logs -f backend      # ver logs del backend en vivo
+docker compose logs -f frontend     # ver logs de nginx (frontend)
+docker compose down                 # detener y eliminar los contenedores
+docker compose up --build backend   # reconstruir solo el backend tras un cambio
 ```
 
+### Cambiar de puerto (si 5173 u 8000 están ocupados)
+Edita `docker-compose.yml`. Los puertos son `"HOST:CONTENEDOR"` — cambia solo el
+número de la izquierda (el del host):
+```yaml
+  frontend:
+    ports:
+      - "3000:80"      # ahora la app está en http://localhost:3000
+  backend:
+    ports:
+      - "8001:8000"    # la API queda en http://localhost:8001
+```
+El frontend habla con el backend por el **nombre del servicio** (`backend`), no por
+el puerto del host, así que no hay que tocar nada más. Reconstruye con `docker compose up --build`.
+
 ---
 
-## ⚙️ Requisitos previos
+## 💻 Opción B — Correr sin Docker (manual)
 
-- **Python 3.10** o superior
-- **Node.js 18** o superior
+Necesitarás **dos terminales abiertas a la vez**: una para el backend y otra para el frontend.
+
+### Requisitos previos
+- **Python 3.10+**
+- **Node.js 18+**
 - **Stockfish** (motor de ajedrez)
-- **API key de Anthropic** — para el comentario GM (opcional, pero necesaria para esa función)
+- **API key de Anthropic** (opcional, solo para el comentario GM)
 
----
+### 1. Instalar Stockfish
+- **Windows:** descarga el `.zip` de https://stockfishchess.org/download/, extrae el `.exe` (ej. `C:\stockfish\`) y anota su ruta completa.
+- **macOS:** `brew install stockfish`
+- **Ubuntu/Debian:** `sudo apt update && sudo apt install stockfish`
 
-## 🚀 Instalación y ejecución
+> Si lo instalaste con `brew` o `apt`, se detecta solo. En Windows quizá tengas que
+> indicar la ruta con `STOCKFISH_PATH` en el `.env` (ver más abajo).
 
-### 1. Clonar el repositorio
-
-```bash
-git clone https://github.com/tu-usuario/chess-trainer.git
-cd chess-trainer
-```
-
-### 2. Instalar Stockfish
-
-**Windows:**
-1. Descarga el `.zip` desde https://stockfishchess.org/download/
-2. Extrae el `.exe` en una carpeta, por ejemplo `C:\stockfish\`
-3. Anota la ruta completa del ejecutable (la necesitarás en el paso 5)
-
-**macOS (Homebrew):**
-```bash
-brew install stockfish
-```
-
-**Ubuntu / Debian:**
-```bash
-sudo apt update && sudo apt install stockfish
-```
-
-### 3. Preparar el backend (solo la primera vez)
-
+### 2. Backend (Terminal 1) → puerto **8000**
 ```bash
 cd chess-backend
-```
 
-**Crear el entorno virtual:**
-```bash
+# Crear el entorno virtual (solo la primera vez)
 python -m venv venv
-```
 
-**Activar el entorno virtual:**
-```bash
-# Windows (PowerShell):
+# Activarlo
+#   Windows (PowerShell):
 venv\Scripts\activate
-
-# macOS / Linux:
+#   macOS / Linux:
 source venv/bin/activate
-```
 
-Sabrás que está activado porque el prompt de la terminal mostrará `(venv)` al inicio.
-
-**Instalar todas las dependencias Python:**
-```bash
+# Instalar dependencias (solo la primera vez)
 pip install -r requirements.txt
-```
 
-Esto instala FastAPI, Uvicorn, python-chess, Anthropic y el resto. Solo tienes que hacerlo **una vez** (o si alguien actualiza el `requirements.txt`).
-
-### 4. Variables de entorno (API Keys) {#️-variables-de-entorno-api-keys}
-
-El backend necesita un archivo `.env` dentro de la carpeta `chess-backend/` para funcionar con el comentario GM.
-
-**Paso 1 — Consigue tu API key de Anthropic:**
-
-1. Ve a https://console.anthropic.com y crea una cuenta (o inicia sesión)
-2. En el panel izquierdo haz clic en **API Keys**
-3. Pulsa **Create Key**, dale un nombre (ej. `chess-trainer`) y copia la clave — empieza con `sk-ant-...`
-4. Guárdala en un lugar seguro; solo se muestra una vez
-
-**Paso 2 — Crea el archivo `.env` en Windows:**
-
-Abre el Bloc de notas y escribe exactamente esto (pega tu clave real):
-
-```
-ANTHROPIC_API_KEY=sk-ant-TU_CLAVE_REAL_AQUI
-
-# Solo si Stockfish NO está en el PATH del sistema:
-# STOCKFISH_PATH=C:\stockfish\stockfish-windows-x86-64-avx2.exe
-```
-
-Luego guarda como `chess-backend\.env`:
-- En Bloc de notas: **Archivo → Guardar como**
-- Navega a la carpeta `chess-backend`
-- En "Nombre de archivo" escribe: `.env` (con el punto)
-- En "Tipo" selecciona: **Todos los archivos (\*.\*)**
-- Pulsa **Guardar**
-
-> ⚠️ El archivo se llama `.env` (sin nombre antes del punto). Si Windows lo guarda como `.env.txt` no funcionará — verifica en el Explorador de Archivos que no tenga extensión `.txt`.
-
-> 🔒 El `.env` está en `.gitignore` — nunca se sube a GitHub. Tu clave está segura.
-
-**Sin API key:** La app funciona perfectamente (Stockfish, sugerencias, reloj, todo) — solo el panel 🎓 de comentario GM no aparecerá.
-
-### 5. Instalar dependencias del frontend (solo la primera vez)
-
-```bash
-cd ../chess-frontend
-npm install
-```
-
----
-
-## ▶ Cómo ejecutar la app (cada vez que quieras jugar)
-
-Necesitas **dos terminales abiertas al mismo tiempo**: una para el backend y otra para el frontend.
-
-### Terminal 1 — Backend (Stockfish + IA)
-
-```bash
-# 1. Entrar a la carpeta del backend
-cd chess-backend
-
-# 2. Activar el entorno virtual
-# Windows (PowerShell):
-venv\Scripts\activate
-# macOS / Linux:
-source venv/bin/activate
-
-# 3. Arrancar el servidor
+# Arrancar el servidor
 python run.py
 ```
-
-Debes ver esto en la terminal:
+Deberías ver:
 ```
-✅ ANTHROPIC_API_KEY cargada correctamente (sk-ant-...)
 ✅ Stockfish iniciado correctamente
 INFO:     Uvicorn running on http://0.0.0.0:8000
 INFO:     Application startup complete.
 ```
+> **`ModuleNotFoundError`** → falta el `pip install -r requirements.txt` con el venv activado.
 
-> ⚠️ **Error `ModuleNotFoundError`?** — Significa que falta hacer el `pip install`. Ejecuta `pip install -r requirements.txt` con el entorno virtual activado y vuelve a intentar.
-
-> **Nota:** Si instalaste Stockfish con `brew` o `apt`, no necesitas `STOCKFISH_PATH` en el `.env` — se detecta automáticamente.
-
-### Terminal 2 — Frontend (interfaz React)
-
+### 3. Frontend (Terminal 2) → puerto **5173**
 ```bash
-# 1. Entrar a la carpeta del frontend
 cd chess-frontend
 
-# 2. Arrancar el servidor de desarrollo
+# Instalar dependencias (solo la primera vez)
+npm install
+
+# Arrancar el servidor de desarrollo
 npm run dev
 ```
-
 Verás:
 ```
   VITE v8.x.x  ready in xxx ms
   ➜  Local:   http://localhost:5173/
 ```
 
-### Abrir la aplicación
+### 4. Abrir la app
+👉 **http://localhost:5173** (con las dos terminales corriendo)
 
-Con ambas terminales corriendo, abre tu navegador en: **http://localhost:5173**
+### Cambiar de puerto sin Docker
+- **Backend en otro puerto:**
+  ```bash
+  python -m uvicorn app.main:app --port 8001
+  ```
+- **Frontend apuntando a ese backend:**
+  ```bash
+  # macOS / Linux
+  VITE_API_URL=http://localhost:8001/api npm run dev
+  # Windows (PowerShell)
+  $env:VITE_API_URL="http://localhost:8001/api"; npm run dev
+  ```
+Sin Docker el frontend llama al backend directamente por su URL (por eso existe
+`VITE_API_URL`); por defecto usa `http://localhost:8000/api`.
+
+---
+
+## ⚙️ Variables de entorno (API keys)
+
+El backend lee un archivo `.env` dentro de `chess-backend/`.
+
+| Variable | Obligatoria | Descripción |
+|----------|-------------|-------------|
+| `ANTHROPIC_API_KEY` | No | Habilita el comentario GM 🎓 con Claude. Empieza con `sk-ant-...`. Consíguela en https://console.anthropic.com → **API Keys** → **Create Key**. |
+| `STOCKFISH_PATH` | No | Ruta al binario de Stockfish. Solo si **no** está en el PATH (típico en Windows). Ej: `C:\stockfish\stockfish-windows-x86-64-avx2.exe`. |
+
+Ejemplo de `chess-backend/.env`:
+```
+ANTHROPIC_API_KEY=sk-ant-TU_CLAVE_REAL_AQUI
+
+# Solo si Stockfish NO está en el PATH:
+# STOCKFISH_PATH=C:\stockfish\stockfish-windows-x86-64-avx2.exe
+```
+
+> 🔒 El `.env` está en `.gitignore`: nunca se sube a GitHub.
+> **Sin API key la app funciona igual** (Stockfish, sugerencias, reloj, análisis, todo) — solo se oculta el panel 🎓.
 
 ---
 
 ## 🌐 Endpoints de la API
 
-La API REST corre en `http://localhost:8000`. Puedes explorarla en:
-**http://localhost:8000/docs** (documentación interactiva de FastAPI)
+Base: `http://localhost:8000/api` · Documentación interactiva: `http://localhost:8000/docs`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/health` | Verifica que el servidor y Stockfish estén activos |
+| GET  | `/api/health` | Verifica que el servidor y Stockfish estén activos |
 | POST | `/api/new-game` | Devuelve el FEN de la posición inicial |
 | POST | `/api/move` | El bot calcula y devuelve su jugada |
 | POST | `/api/hint` | Devuelve la mejor jugada sin ejecutarla |
-| POST | `/api/top-moves` | Devuelve las N mejores jugadas (para sugerencias) |
+| POST | `/api/top-moves` | Devuelve las N mejores jugadas (sugerencias) |
 | POST | `/api/evaluate` | Evalúa la posición en centipawns |
-| GET | `/api/legal-moves` | Lista todos los movimientos legales para una posición |
+| GET  | `/api/legal-moves` | Movimientos legales para una posición |
 | POST | `/api/commentary` | 🎓 Análisis GM de una jugada (requiere `ANTHROPIC_API_KEY`) |
+| POST | `/api/analyze-move` | 🔍 Analiza una jugada de partida importada (Game Review) |
+| GET  | `/api/chesscom/{user}/archives` | Meses con partidas de un usuario de chess.com |
+| GET  | `/api/chesscom/{user}/games/{año}/{mes}` | Partidas del mes con PGN completo |
+
+El backend es **stateless**: cada petición lleva el FEN completo, así que no hay
+sesiones y se pueden jugar varias partidas a la vez.
 
 ---
 
-## 🎮 Cómo usar
+## 🩺 Solución de problemas
 
-1. **Elige tu color** en el panel de la derecha (blancas o negras)
-2. **Ajusta el nivel** del bot (0 = muy fácil, 20 = maestro)
-3. **Selecciona el tiempo** del reloj (1', 3', 5', 10', 30' o ∞) — opcional
-4. **Mueve tus piezas** arrastrándolas o haciendo clic (clic en pieza → clic en destino)
-5. **Lee el análisis GM** — tras cada jugada tuya y la respuesta del bot, aparece el panel 🎓 con:
-   - Tu jugada clasificada (Excelente / Buena / Imprecisión / Error / Mate perdido)
-   - Por qué hiciste esa jugada, qué amenaza crea y el plan a seguir
-   - Lo mismo para la jugada del bot, para que entiendas su razonamiento
-   - Un consejo de entrenamiento personal al pie de tu tarjeta
-   - Ciérralo con ✕ o colápsa cada tarjeta haciendo clic en su cabecera
-6. **Consulta las sugerencias** debajo del tablero:
-   - El banner naranja muestra la estrategia actual del rival
-   - Cada tarjeta explica la jugada y lo que el rival podría responder
-   - El tip azul al pie da un consejo de entrenamiento para esa posición
-6. **Pide una pista** con "💡 Pedir pista" para ver la mejor jugada resaltada en azul
-7. **Deshaz y rehaz jugadas** con ⏮ ◀ ▶ ⏭ debajo del tablero (o ← → / Ctrl+Z / Ctrl+Y)
-   - Al deshacer puedes mover de forma diferente y se crea una nueva línea
-   - El badge muestra **+N por rehacer** cuando hay jugadas en el stack, o **● En vivo** en la posición actual
-8. Al terminar, pulsa **▶ Replay** en el historial para reproducir toda la partida
+| Síntoma | Causa probable | Solución |
+|---------|----------------|----------|
+| `localhost:5173` no carga nada (ni error, ni spinner) con Docker | Docker Desktop no está corriendo, o el contenedor `frontend` nunca arrancó | 1) Confirma que Docker Desktop dice "running". 2) `docker compose ps` — si `frontend` no está `Up`, revisa `docker compose logs backend` (probablemente el backend nunca quedó `healthy` y el frontend se quedó esperando por el `depends_on`). 3) Prueba `http://127.0.0.1:5173` en vez de `localhost`. |
+| `docker compose up` da `error during connect` / `Cannot connect to the Docker daemon` | Docker Desktop está cerrado | Abre Docker Desktop, espera al ícono 🐳 verde/estable, reintenta |
+| `docker compose up --build` falla al construir el backend (apt-get / stockfish) | Sin internet o VPN/firewall corporativo bloqueando la descarga de paquetes durante el build | Revisa tu conexión, desactiva VPN temporalmente, o reintenta `docker compose build backend` |
+| Contenedor `backend` en estado `Restarting` o `Exited` | Crasheó al iniciar (puerto ocupado dentro del contenedor es raro, más común: excepción en el código) | `docker compose logs backend` y busca el traceback de Python |
+| La app abre pero el bot no mueve / no hay sugerencias | El backend no está corriendo o Stockfish no se encontró | Revisa la Terminal 1 (`python run.py`) o `docker compose logs -f backend`. Verifica http://localhost:8000/api/health |
+| `No se encontró Stockfish` | Stockfish no está en el PATH | Instálalo (ver arriba) o define `STOCKFISH_PATH` en `.env` |
+| `ModuleNotFoundError` al arrancar el backend | Falta instalar dependencias | Activa el venv y ejecuta `pip install -r requirements.txt` |
+| El panel 🎓 de comentario GM no aparece | Falta `ANTHROPIC_API_KEY` | Añádela en `chess-backend/.env` (opcional) |
+| `port is already allocated` / `EADDRINUSE` | El puerto 5173 u 8000 ya está en uso (a veces por un `npm run dev` nativo que dejaste corriendo) | Cierra ese proceso o cambia el puerto (ver "Cambiar de puerto" en cada opción) |
+| La web dice "File not found" o queda en blanco | Caché del navegador | Recarga con **Ctrl/Cmd + Shift + R** |
 
-### Seguir partidas de GM / Análisis libre
-
-1. Pulsa **⚡ Modo análisis** en el panel derecho (se ilumina en amarillo cuando está activo)
-2. Mueve las piezas de **ambos colores** — blancas y negras — tú mismo
-3. Después de cada jugada el panel muestra automáticamente la **mejor respuesta** para el bando que sigue
-4. Reproduce movimiento a movimiento cualquier partida de un libro o torneo y compara con lo que sugiere Stockfish
-5. Para volver al modo normal (con bot) pulsa el botón nuevamente
+**Comandos de diagnóstico rápido con Docker:**
+```bash
+docker compose ps               # estado de cada contenedor (Up/Exited/healthy)
+docker compose logs backend     # log completo del backend (errores de Python/Stockfish)
+docker compose logs frontend    # log de nginx
+docker compose down && docker compose up --build   # reinicio limpio desde cero
+```
 
 ---
 
 ## 🏗 Arquitectura
 
 ```
-Navegador (React)
-      │
-      │  HTTP/REST (Axios)
+Navegador (React, :5173)
+      │  HTTP/REST
       ▼
-FastAPI (Python)  ◄──── Uvicorn (servidor ASGI)
-      │
-      │  UCI (protocolo estándar de motores de ajedrez)
+FastAPI (Python, :8000)  ◄── Uvicorn
+      │  UCI
       ▼
 Stockfish (proceso externo)
 ```
-
-El backend es **stateless**: cada petición lleva el FEN completo de la posición. Esto permite múltiples partidas simultáneas sin sesiones.
+Con Docker, nginx (dentro del frontend) hace de proxy `/api → backend:8000`, así que
+el navegador solo habla con un origen (`:5173`) y no hay problemas de CORS.
 
 ---
 

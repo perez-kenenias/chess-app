@@ -27,10 +27,10 @@ load_dotenv(dotenv_path=_env_path)
 
 _api_key = os.getenv("ANTHROPIC_API_KEY")
 if not _api_key:
-    print("⚠️  ANTHROPIC_API_KEY no encontrada. El comentario GM no funcionará.")
+    print("[AVISO] ANTHROPIC_API_KEY no encontrada. El comentario GM no funcionará.")
     print(f"   Busqué .env en: {_env_path.resolve()}")
 else:
-    print(f"✅ ANTHROPIC_API_KEY cargada correctamente ({_api_key[:12]}...)")
+    print(f"[OK] ANTHROPIC_API_KEY cargada correctamente ({_api_key[:12]}...)")
 
 _client = anthropic.AsyncAnthropic(api_key=_api_key)
 
@@ -207,7 +207,7 @@ Responde SOLO en JSON sin texto adicional:
         data = _parse_json_safe(message.content[0].text)
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Error al llamar a Claude API: {type(e).__name__}: {error_msg}")
+        print(f"[ERROR] Error al llamar a Claude API: {type(e).__name__}: {error_msg}")
         # Re-lanzar para que el endpoint lo reporte como error al frontend
         raise RuntimeError(f"Claude API error: {type(e).__name__}: {error_msg}")
 

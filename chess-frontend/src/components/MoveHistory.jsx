@@ -21,10 +21,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Chessboard } from "react-chessboard";
+import { formatSan } from "../utils/notation";
 
 // ── Modal de Replay ───────────────────────────────────────────────────────────
 
-const GameReplayModal = ({ moves, fenHistory, onClose }) => {
+const GameReplayModal = ({ moves, fenHistory, onClose, esNotation }) => {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying]   = useState(false);
   const intervalRef = useRef(null);
@@ -107,7 +108,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
             {currentMove && (
               <div className="replay-move-badge">
                 <span className={`replay-color-dot ${currentMove.color}`} />
-                {currentMove.color === "white" ? "Blancas" : "Negras"}: <strong>{currentMove.san}</strong>
+                {currentMove.color === "white" ? "Blancas" : "Negras"}: <strong>{formatSan(currentMove.san, esNotation)}</strong>
               </div>
             )}
             {!currentMove && (
@@ -125,6 +126,8 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
             <div className="replay-board-inner">
               <Chessboard
                 options={{
+                  // id único: evita colisión con los otros tableros montados
+                  id:                    "board-replay",
                   position:              currentFen,
                   allowDragging:         false,
                   showNotation:          true,
@@ -171,14 +174,14 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
                     className={`replay-move-btn ${currentIdx === pair.whiteIdx ? "active" : ""}`}
                     onClick={() => { setIsPlaying(false); setCurrentIdx(pair.whiteIdx); }}
                   >
-                    {pair.white?.san}
+                    {formatSan(pair.white?.san, esNotation)}
                   </button>
                   <button
                     className={`replay-move-btn ${currentIdx === pair.blackIdx ? "active" : ""}`}
                     onClick={() => { setIsPlaying(false); setCurrentIdx(pair.blackIdx); }}
                     disabled={!pair.black}
                   >
-                    {pair.black?.san ?? "…"}
+                    {pair.black ? formatSan(pair.black.san, esNotation) : "…"}
                   </button>
                 </div>
               ))}
@@ -194,7 +197,7 @@ const GameReplayModal = ({ moves, fenHistory, onClose }) => {
 
 // ── Componente MoveHistory ────────────────────────────────────────────────────
 
-const MoveHistory = ({ moves = [], fenHistory = [] }) => {
+const MoveHistory = ({ moves = [], fenHistory = [], esNotation = false }) => {
   const [showReplay, setShowReplay] = useState(false);
   const listRef = useRef(null); // ref al contenedor de la lista, NO a un elemento dentro
 
@@ -241,9 +244,9 @@ const MoveHistory = ({ moves = [], fenHistory = [] }) => {
             {pairs.map((pair) => (
               <div key={pair.number} className="move-pair">
                 <span className="move-num">{pair.number}.</span>
-                <span className="move-cell move-white">{pair.white.san}</span>
+                <span className="move-cell move-white">{formatSan(pair.white.san, esNotation)}</span>
                 <span className={`move-cell move-black ${!pair.black ? "move-cell-empty" : ""}`}>
-                  {pair.black ? pair.black.san : "..."}
+                  {pair.black ? formatSan(pair.black.san, esNotation) : "..."}
                 </span>
               </div>
             ))}
@@ -257,6 +260,7 @@ const MoveHistory = ({ moves = [], fenHistory = [] }) => {
           moves={moves}
           fenHistory={fenHistory}
           onClose={() => setShowReplay(false)}
+          esNotation={esNotation}
         />
       )}
     </>

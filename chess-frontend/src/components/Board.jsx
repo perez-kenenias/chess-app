@@ -21,6 +21,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { getBotMove, evaluatePosition } from "../api/chess";
+import { ArrowLayer } from "../utils/arrows";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ const Board = ({
   hintMove         = null,
   analysisMode     = false,    // true = mueve ambos colores, sin bot
   opponentSquares  = {},        // { sq: "attacker"|"attacked" } — amenazas del rival
+  arrows           = [],        // [{ from, to, color?, opacity? }] — flechas estilo chess.com
 }) => {
 
   // ── Estado local ────────────────────────────────────────────────────────────
@@ -582,6 +584,11 @@ const Board = ({
       */}
       <Chessboard
         options={{
+          // id ÚNICO obligatorio: hay varios tableros montados a la vez
+          // (jugar/analizar/lecciones). Piece busca casillas por id de DOM;
+          // con ids duplicados encuentra las del tablero oculto (ancho 0)
+          // y lanza "Square width not found".
+          id:                    "board-jugar",
           position:              game.fen(),
           boardOrientation:      playerColor,
           onPieceDrop:           onDrop,
@@ -596,6 +603,7 @@ const Board = ({
       />
 
       {renderSquareLabels()}
+      <ArrowLayer arrows={arrows} orientation={playerColor} />
     </div>
   );
 };

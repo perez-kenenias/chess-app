@@ -17,7 +17,9 @@
  *   onHighlight {Function}   — callback para resaltar jugada en el tablero
  */
 
-const MoveAnalysisCard = ({ info, onClose, onHighlight }) => {
+import { formatSan, translateSanInText } from "../utils/notation";
+
+const MoveAnalysisCard = ({ info, onClose, onHighlight, esNotation = false }) => {
   if (!info) return null;
 
   const {
@@ -49,7 +51,7 @@ const MoveAnalysisCard = ({ info, onClose, onHighlight }) => {
         {/* Lo que jugaste */}
         <div className="mac-move mac-move--played">
           <span className="mac-move-label">Jugaste</span>
-          <span className="mac-move-san mac-move-san--played">{playedSan}</span>
+          <span className="mac-move-san mac-move-san--played">{formatSan(playedSan, esNotation)}</span>
           {playedPieceName && playedToSq && (
             <span className="mac-move-detail">{playedPieceName} → {playedToSq}</span>
           )}
@@ -65,7 +67,7 @@ const MoveAnalysisCard = ({ info, onClose, onHighlight }) => {
           title="Pasa el cursor para ver esta jugada en el tablero"
         >
           <span className="mac-move-label">Stockfish prefería</span>
-          <span className="mac-move-san mac-move-san--suggested">{suggestedSan}</span>
+          <span className="mac-move-san mac-move-san--suggested">{formatSan(suggestedSan, esNotation)}</span>
           {suggestedPiece && suggestedTo && (
             <span className="mac-move-detail">{suggestedPiece} → {suggestedTo}</span>
           )}
@@ -76,7 +78,7 @@ const MoveAnalysisCard = ({ info, onClose, onHighlight }) => {
       {/* Razonamiento posicional */}
       {positionalContext && (
         <div className="mac-context">
-          <p>{positionalContext}</p>
+          <p>{translateSanInText(positionalContext, esNotation)}</p>
         </div>
       )}
 

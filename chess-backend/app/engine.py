@@ -10,6 +10,7 @@ engine.py — Wrapper de Stockfish usando python-chess.
 import chess
 import chess.engine
 import os
+import threading
 from typing import Optional, List
 
 
@@ -53,6 +54,25 @@ class ChessEngine:
 
     def __init__(self):
         self._engine: Optional[chess.engine.SimpleEngine] = None
+        # ── Lock de instancia ────────────────────────────────────────────
+        # ¿Por qué? SimpleEngine no es seguro para llamadas concurrentes:
+        # FastAPI ejecuta los endpoints síncronos en un threadpool, así que
+        # dos requests (p.ej. /evaluate y /top-moves casi simultáneos desde
+        # el frontend) pueden mandar comandos UCI al mismo proceso de
+        # Stockfish al mismo tiempo. Eso corrompe la máquina de estados del
+        # protocolo UCI dentro de python-chess y lanza errores como
+        # "CommandState.NEW". Este lock serializa TODO acceso al motor
+        # (desde este archivo y desde quien llame _get_engine() por fuera,
+        # usando la property `lock`) para que solo un comando esté en
+        # vuelo a la vez.
+        self._lock = threading.RLock()
+
+    @property
+    def lock(self) -> threading.RLock:
+        """Lock público — úsalo con `with chess_engine.lock:` si necesitas
+        llamar engine.analyse()/play() directamente desde fuera de esta
+        clase (ver analysis_service.py y main.py)."""
+        return self._lock
 
     def _get_engine(self) -> chess.engine.SimpleEngine:
         """Retorna la instancia activa, creándola si no existe."""
@@ -63,9 +83,10 @@ class ChessEngine:
 
     def close(self):
         """Cierra el proceso de Stockfish correctamente al apagar el servidor."""
-        if self._engine:
-            self._engine.quit()
-            self._engine = None
+        with self._lock:
+            if self._engine:
+                self._engine.quit()
+                self._engine = None
 
     def get_best_move(
         self,
@@ -90,38 +111,39 @@ class ChessEngine:
         usando un algoritmo llamado "MultiPV con ruido". No solo juega más lento,
         sino que activamente elige jugadas subóptimas para simular humanos reales.
         """
-        engine = self._get_engine()
-        board = chess.Board(fen)
+        with self._lock:
+            engine = self._get_engine()
+            board = chess.Board(fen)
 
-        # Verificar que la partida no haya terminado
-        if board.is_game_over():
+            # Verificar que la partida no haya terminado
+            if board.is_game_over():
+                return {
+                    "move": None,
+                    "game_over": True,
+                    "result": board.result(),
+                }
+
+            # Configurar nivel de habilidad ANTES de calcular
+            # Skill Level 0-20 mapea a ~500-3600 Elo aproximadamente
+            engine.configure({"Skill Level": max(0, min(20, skill_level))})
+
+            # Calcular mejor jugada
+            result = engine.play(
+                board,
+                chess.engine.Limit(time=time_limit),
+            )
+
+            move = result.move
+            board.push(move)  # Aplicar el movimiento para obtener el FEN actualizado
+
             return {
-                "move": None,
-                "game_over": True,
-                "result": board.result(),
+                "move": move.uci(),          # Ej: "e2e4", "g1f3"
+                "move_san": result.move.uci(), # TODO: convertir a SAN si se necesita
+                "fen_after": board.fen(),      # FEN después del movimiento del bot
+                "game_over": board.is_game_over(),
+                "result": board.result() if board.is_game_over() else None,
+                "in_check": board.is_check(),
             }
-
-        # Configurar nivel de habilidad ANTES de calcular
-        # Skill Level 0-20 mapea a ~500-3600 Elo aproximadamente
-        engine.configure({"Skill Level": max(0, min(20, skill_level))})
-
-        # Calcular mejor jugada
-        result = engine.play(
-            board,
-            chess.engine.Limit(time=time_limit),
-        )
-
-        move = result.move
-        board.push(move)  # Aplicar el movimiento para obtener el FEN actualizado
-
-        return {
-            "move": move.uci(),          # Ej: "e2e4", "g1f3"
-            "move_san": result.move.uci(), # TODO: convertir a SAN si se necesita
-            "fen_after": board.fen(),      # FEN después del movimiento del bot
-            "game_over": board.is_game_over(),
-            "result": board.result() if board.is_game_over() else None,
-            "in_check": board.is_check(),
-        }
 
     def get_hint(
         self,
@@ -136,24 +158,25 @@ class ChessEngine:
         Una pista debe ser siempre el movimiento óptimo — si le pides ayuda
         al coach, quieres la mejor jugada, no una aleatoria.
         """
-        engine = self._get_engine()
-        board = chess.Board(fen)
+        with self._lock:
+            engine = self._get_engine()
+            board = chess.Board(fen)
 
-        if board.is_game_over():
-            return {"hint": None, "game_over": True}
+            if board.is_game_over():
+                return {"hint": None, "game_over": True}
 
-        engine.configure({"Skill Level": 20})  # Nivel máximo para pistas
+            engine.configure({"Skill Level": 20})  # Nivel máximo para pistas
 
-        result = engine.play(
-            board,
-            chess.engine.Limit(time=time_limit),
-        )
+            result = engine.play(
+                board,
+                chess.engine.Limit(time=time_limit),
+            )
 
-        return {
-            "hint": result.move.uci(),
-            "from_square": chess.square_name(result.move.from_square),
-            "to_square": chess.square_name(result.move.to_square),
-        }
+            return {
+                "hint": result.move.uci(),
+                "from_square": chess.square_name(result.move.from_square),
+                "to_square": chess.square_name(result.move.to_square),
+            }
 
     def evaluate_position(
         self,
@@ -174,42 +197,43 @@ class ChessEngine:
                    Más profundidad = más preciso pero más lento.
                    Depth 15 tarda ~0.5s, depth 20 tarda ~2-5s.
         """
-        engine = self._get_engine()
-        board = chess.Board(fen)
+        with self._lock:
+            engine = self._get_engine()
+            board = chess.Board(fen)
 
-        if board.is_game_over():
+            if board.is_game_over():
+                return {
+                    "score": None,
+                    "mate_in": None,
+                    "game_over": True,
+                    "result": board.result(),
+                }
+
+            engine.configure({"Skill Level": 20})  # Siempre máximo para análisis
+
+            info = engine.analyse(
+                board,
+                chess.engine.Limit(depth=depth),
+            )
+
+            score = info["score"].relative  # Relativo al jugador en turno
+
+            # Extraer centipawns o mate
+            if score.is_mate():
+                return {
+                    "score": None,
+                    "mate_in": score.mate(),   # Positivo = mate para el jugador en turno
+                    "centipawns": None,
+                    "game_over": False,
+                }
+
             return {
-                "score": None,
+                "score": score.score(),        # Centipawns (-9999 a +9999)
                 "mate_in": None,
-                "game_over": True,
-                "result": board.result(),
-            }
-
-        engine.configure({"Skill Level": 20})  # Siempre máximo para análisis
-
-        info = engine.analyse(
-            board,
-            chess.engine.Limit(depth=depth),
-        )
-
-        score = info["score"].relative  # Relativo al jugador en turno
-
-        # Extraer centipawns o mate
-        if score.is_mate():
-            return {
-                "score": None,
-                "mate_in": score.mate(),   # Positivo = mate para el jugador en turno
-                "centipawns": None,
+                "centipawns": score.score(),
                 "game_over": False,
+                "depth_reached": info.get("depth", depth),
             }
-
-        return {
-            "score": score.score(),        # Centipawns (-9999 a +9999)
-            "mate_in": None,
-            "centipawns": score.score(),
-            "game_over": False,
-            "depth_reached": info.get("depth", depth),
-        }
 
     def get_top_moves(
         self,
@@ -244,69 +268,70 @@ class ChessEngine:
                 "is_check":    false,
             }
         """
-        engine = self._get_engine()
-        board  = chess.Board(fen)
+        with self._lock:
+            engine = self._get_engine()
+            board  = chess.Board(fen)
 
-        if board.is_game_over():
-            return []
+            if board.is_game_over():
+                return []
 
-        # Limitar count a los movimientos legales disponibles
-        legal_count = min(count, len(list(board.legal_moves)))
-        if legal_count == 0:
-            return []
+            # Limitar count a los movimientos legales disponibles
+            legal_count = min(count, len(list(board.legal_moves)))
+            if legal_count == 0:
+                return []
 
-        # Configurar nivel máximo para análisis (el MultiPV lo gestiona python-chess
-        # internamente a través del parámetro multipv= de analyse(); configurarlo
-        # también con engine.configure() causa un conflicto y lanza un error).
-        engine.configure({"Skill Level": 20})
+            # Configurar nivel máximo para análisis (el MultiPV lo gestiona python-chess
+            # internamente a través del parámetro multipv= de analyse(); configurarlo
+            # también con engine.configure() causa un conflicto y lanza un error).
+            engine.configure({"Skill Level": 20})
 
-        info_list = engine.analyse(
-            board,
-            chess.engine.Limit(time=time_limit),
-            multipv=legal_count,
-        )
+            info_list = engine.analyse(
+                board,
+                chess.engine.Limit(time=time_limit),
+                multipv=legal_count,
+            )
 
-        results = []
-        for info in info_list:
-            if not info.get("pv"):
-                continue
+            results = []
+            for info in info_list:
+                if not info.get("pv"):
+                    continue
 
-            move      = info["pv"][0]
-            score_obj = info["score"].relative
+                move      = info["pv"][0]
+                score_obj = info["score"].relative
 
-            # Detectar propiedades del movimiento
-            is_capture = board.is_capture(move)
-            piece_type  = board.piece_at(move.from_square)
-            piece_char  = piece_type.symbol().lower() if piece_type else "p"
+                # Detectar propiedades del movimiento
+                is_capture = board.is_capture(move)
+                piece_type  = board.piece_at(move.from_square)
+                piece_char  = piece_type.symbol().lower() if piece_type else "p"
 
-            # Calcular posición después del movimiento
-            board_copy = board.copy()
-            san        = board_copy.san(move)  # notación algebraica antes de aplicar
-            board_copy.push(move)
-            is_check = board_copy.is_check()
+                # Calcular posición después del movimiento
+                board_copy = board.copy()
+                san        = board_copy.san(move)  # notación algebraica antes de aplicar
+                board_copy.push(move)
+                is_check = board_copy.is_check()
 
-            # Extraer puntuación
-            if score_obj.is_mate():
-                score_val = None
-                mate_in   = score_obj.mate()
-            else:
-                score_val = score_obj.score()
-                mate_in   = None
+                # Extraer puntuación
+                if score_obj.is_mate():
+                    score_val = None
+                    mate_in   = score_obj.mate()
+                else:
+                    score_val = score_obj.score()
+                    mate_in   = None
 
-            results.append({
-                "uci":         move.uci(),
-                "san":         san,
-                "from_square": chess.square_name(move.from_square),
-                "to_square":   chess.square_name(move.to_square),
-                "score":       score_val,
-                "mate_in":     mate_in,
-                "fen_after":   board_copy.fen(),
-                "piece":       piece_char,
-                "is_capture":  is_capture,
-                "is_check":    is_check,
-            })
+                results.append({
+                    "uci":         move.uci(),
+                    "san":         san,
+                    "from_square": chess.square_name(move.from_square),
+                    "to_square":   chess.square_name(move.to_square),
+                    "score":       score_val,
+                    "mate_in":     mate_in,
+                    "fen_after":   board_copy.fen(),
+                    "piece":       piece_char,
+                    "is_capture":  is_capture,
+                    "is_check":    is_check,
+                })
 
-        return results
+            return results
 
     def get_legal_moves(self, fen: str) -> dict:
         """

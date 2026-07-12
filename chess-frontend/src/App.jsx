@@ -9,8 +9,14 @@
  *   5. Conectar todos los componentes pasando datos y callbacks
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import Board           from "./components/Board";
+import GameReview      from "./components/GameReview";
+import LearnSection    from "./components/LearnSection";
+import NotationGlossary from "./components/NotationGlossary";
+import ErrorBoundary     from "./components/ErrorBoundary";
+import { detectOpening } from "./data/openings";
+import { formatSan }     from "./utils/notation";
 import ControlPanel    from "./components/ControlPanel";
 import AdvantageBar    from "./components/AdvantageBar";
 import MoveHistory     from "./components/MoveHistory";
@@ -18,12 +24,32 @@ import MoveSuggestions   from "./components/MoveSuggestions";
 import MoveAnalysisCard  from "./components/MoveAnalysisCard";
 import MoveCommentary    from "./components/MoveCommentary";
 import ChessClock        from "./components/ChessClock";
-import { checkHealth, getHint, getCommentary } from "./api/chess";
+import { checkHealth, getHint, getCommentary, saveGame } from "./api/chess";
 import "./App.css";
+import "./views.css";
 
 const INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 function App() {
+
+  // ── Vista activa: jugar | analizar | aprender ────────────────────────────────
+  const [view, setView] = useState("jugar");
+
+  // ── Pestaña activa del panel derecho (vista Jugar): sugerencias | jugadas | ajustes ──
+  const [rightTab, setRightTab] = useState("sugerencias");
+
+  // ── Notación española (C=Caballo, A=Alfil...) y glosario ────────────────────
+  // Persiste en localStorage para no tener que reactivarla en cada sesión.
+  const [esNotation, setEsNotation] = useState(
+    () => localStorage.getItem("esNotation") === "1"
+  );
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const toggleNotation = useCallback(() => {
+    setEsNotation(prev => {
+      localStorage.setItem("esNotation", prev ? "0" : "1");
+      return !prev;
+    });
+  }, []);
 
   // ── Estado del juego ────────────────────────────────────────────────────────
   const [fen, setFen]               = useState(INITIAL_FEN);
@@ -58,6 +84,9 @@ function App() {
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [hintMove, setHintMove]             = useState(null);
   const [highlightMove, setHighlightMove]   = useState(null);
+  // topSuggestion = { from_square, to_square } de la mejor jugada actual,
+  // reportada por MoveSuggestions — se usa para la flecha verde permanente.
+  const [topSuggestion, setTopSuggestion]   = useState(null);
   const [backendOk, setBackendOk]           = useState(null);
   const [opponentSquares, setOpponentSquares] = useState({});
 
@@ -82,6 +111,13 @@ function App() {
   // ── Refs para el reloj ───────────────────────────────────────────────────────
   const gameStatusRef = useRef(gameStatus);
   useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
+
+  // ── Guardado automático en el historial al terminar la partida ──────────────
+  // savedGameNotice = { id } mientras se muestra la tarjeta "Partida guardada".
+  const [savedGameNotice, setSavedGameNotice] = useState(null);
+  // Ref para detectar la TRANSICIÓN false → true de gameStatus.gameOver
+  // (no queremos volver a guardar si el componente re-renderiza con gameOver aún true).
+  const wasGameOverRef = useRef(false);
 
   // ── Verificar backend ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -139,6 +175,25 @@ function App() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastBotMove, gmCommentaryEnabled]);
+
+  // ── useEffect: guardar la partida en el historial cuando termina ────────────
+  // Solo en la transición false → true de gameOver, y nunca en modo análisis
+  // libre (ahí no hay "jugador vs. bot" que valga la pena archivar).
+  useEffect(() => {
+    const isOver = !!gameStatus.gameOver;
+    if (isOver && !wasGameOverRef.current && !analysisMode && moves.length > 0) {
+      const movesSan = moves.map(m => m.san);
+      saveGame({
+        player_color: playerColor,
+        skill_level:  skillLevel,
+        result:       gameStatus.result ?? "*",
+        moves_san:    movesSan,
+      })
+        .then(res => setSavedGameNotice({ id: res.data.id }))
+        .catch(err => console.error("No se pudo guardar la partida en el historial:", err));
+    }
+    wasGameOverRef.current = isOver;
+  }, [gameStatus.gameOver, gameStatus.result, analysisMode, moves, playerColor, skillLevel]);
 
   /**
    * handleWrongMove — recibe el análisis de la jugada subóptima desde MoveSuggestions.
@@ -206,6 +261,8 @@ function App() {
     setCommentary(null);
     setWrongMoveInfo(null);
     setOpponentSquares({});
+    setSavedGameNotice(null);
+    wasGameOverRef.current = false;
     _resetUI();
     if (clockMinutes > 0) {
       setWhiteTime(clockMinutes * 60);
@@ -228,6 +285,8 @@ function App() {
       setCommentary(null);
       setWrongMoveInfo(null);
       setOpponentSquares({});
+      setSavedGameNotice(null);
+      wasGameOverRef.current = false;
       _resetUI();
       if (clockMinutes > 0) {
         setWhiteTime(clockMinutes * 60);
@@ -346,6 +405,7 @@ function App() {
   // ── Teclado: Ctrl+Z / Ctrl+Y (o ← → sin Ctrl) ──────────────────────────────
   useEffect(() => {
     const onKey = (e) => {
+      if (view !== "jugar") return; // en Analizar/Aprender navegan sus propias vistas
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key === "z") { e.preventDefault(); handleUndo(); }
@@ -355,11 +415,40 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, view]);
 
   // ── Derivados ────────────────────────────────────────────────────────────────
   // Prioridad: pista explícita > hover sobre sugerencia > jugada perdida del análisis
   const activeHint   = hintMove ?? highlightMove ?? missedMoveHighlight;
+
+  // ── Flechas del tablero (estilo chess.com) ────────────────────────────────
+  // Verde = mejor jugada (SIEMPRE pintada por defecto mientras es tu turno,
+  // sin importar qué estés pasando el mouse) · Amarillo = hover sobre una
+  // sugerencia (se dibuja encima, sin apagar la verde) · Azul = pista pedida
+  // · Naranja = jugada que debiste hacer (tras un error).
+  const boardArrows = useMemo(() => {
+    const list = [];
+    if (topSuggestion) {
+      list.push({ from: topSuggestion.from_square, to: topSuggestion.to_square, color: "#81b64c", opacity: 0.8 });
+    }
+    if (missedMoveHighlight && !hintMove && !highlightMove) {
+      list.push({ from: missedMoveHighlight.from_square, to: missedMoveHighlight.to_square, color: "#e58f2a", opacity: 0.85 });
+    }
+    if (highlightMove) {
+      list.push({ from: highlightMove.from_square, to: highlightMove.to_square, color: "#f0c15c", opacity: 0.9 });
+    }
+    if (hintMove) {
+      list.push({ from: hintMove.from_square, to: hintMove.to_square, color: "#60a5fa", opacity: 0.95 });
+    }
+    return list;
+  }, [topSuggestion, highlightMove, hintMove, missedMoveHighlight]);
+
+  // Apertura detectada en vivo — coincide el prefijo más largo de la base ECO.
+  // Se refina mientras juegas: "Peón de rey" → "Italiana" → "Giuoco Piano".
+  const currentOpening = useMemo(
+    () => detectOpening(moves.map(m => m.san)),
+    [moves]
+  );
   const lastMoveSan  = moves.length > 0 ? moves[moves.length - 1].san : null;
   const activeColor  = gameStatus.turn === "w" ? "white" : "black";
   const canUndo      = moves.length > 0 && !gameStatus.isThinking;
@@ -402,10 +491,68 @@ function App() {
           <span className="header-icon">♟</span>
           Chess Trainer
         </div>
-        <div className="header-sub">Stockfish · Nivel {skillLevel}/20</div>
+
+        {/* Navegación principal: jugar / analizar partidas / aprender */}
+        <nav className="main-nav">
+          <button
+            className={`nav-tab ${view === "jugar" ? "active" : ""}`}
+            onClick={() => setView("jugar")}
+          >🎮 Jugar</button>
+          <button
+            className={`nav-tab ${view === "analizar" ? "active" : ""}`}
+            onClick={() => setView("analizar")}
+          >🔍 Analizar partida</button>
+          <button
+            className={`nav-tab ${view === "aprender" ? "active" : ""}`}
+            onClick={() => setView("aprender")}
+          >📚 Aprender</button>
+        </nav>
+
+        <div className="header-right">
+          {/* Toggle notación: EN (Nf3) ↔ ES (Cf3) */}
+          <button
+            className={`notation-toggle ${esNotation ? "active" : ""}`}
+            onClick={toggleNotation}
+            title={esNotation
+              ? "Notación española activa (C=Caballo, A=Alfil). Clic para inglés."
+              : "Notación inglesa activa (N=Knight, B=Bishop). Clic para español."}
+          >
+            ♞ {esNotation ? "ES · Cf3" : "EN · Nf3"}
+          </button>
+          <button
+            className="notation-toggle"
+            onClick={() => setGlossaryOpen(true)}
+            title="Glosario de notación: qué significa cada letra y símbolo"
+          >❓ Notación</button>
+          <div className="header-sub">Stockfish · Nivel {skillLevel}/20</div>
+        </div>
       </header>
 
-      <main className="app-layout">
+      <NotationGlossary
+        open={glossaryOpen}
+        onClose={() => setGlossaryOpen(false)}
+        spanish={esNotation}
+      />
+
+      {/* Las tres vistas permanecen montadas para no perder el análisis en
+          curso ni la partida al cambiar de pestaña. Se ocultan con la clase
+          .view-hidden (fuera de pantalla) y NO con display:none: react-chessboard
+          mide el ancho de las casillas al animar piezas y con display:none el
+          ancho es 0 → lanza "Square width not found". Fuera de pantalla el
+          tablero conserva su tamaño real y las animaciones nunca fallan. */}
+      <main className={`app-page ${view === "analizar" ? "" : "view-hidden"}`}>
+        <ErrorBoundary>
+          <GameReview active={view === "analizar"} esNotation={esNotation} />
+        </ErrorBoundary>
+      </main>
+      <main className={`app-page ${view === "aprender" ? "" : "view-hidden"}`}>
+        <ErrorBoundary>
+          <LearnSection active={view === "aprender"} esNotation={esNotation} />
+        </ErrorBoundary>
+      </main>
+
+      <main className={`app-layout ${view === "jugar" ? "" : "view-hidden"}`}>
+       <ErrorBoundary>
 
         {/* COLUMNA 1: Barra de ventaja */}
         <AdvantageBar
@@ -416,6 +563,33 @@ function App() {
 
         {/* COLUMNA 2: Tablero + controles deshacer/rehacer + sugerencias */}
         <div className="board-col">
+
+          {/* Aviso no intrusivo: la partida terminada se guardó en el historial */}
+          {savedGameNotice && (
+            <div className="suggestion-card saved-game-banner">
+              <span>💾 Partida guardada — revísala en Analizar → 📁 Mis partidas</span>
+              <div className="saved-game-banner-actions">
+                <button
+                  className="btn btn-outline"
+                  onClick={() => { setView("analizar"); setSavedGameNotice(null); }}
+                >Ver historial</button>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => setSavedGameNotice(null)}
+                  title="Cerrar aviso"
+                >✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* Detector de apertura en vivo — para ir memorizándolas al jugar */}
+          {currentOpening && (
+            <div className="opening-badge" title={`Línea: ${currentOpening.moves}`}>
+              📖 Estás jugando: <b>{currentOpening.name}</b>
+              <span className="opening-eco">{currentOpening.eco}</span>
+            </div>
+          )}
+
           <Board
             fen={fen}
             onFenChange={handleFenChange}
@@ -428,6 +602,7 @@ function App() {
             hintMove={activeHint}
             analysisMode={analysisMode}
             opponentSquares={opponentSquares}
+            arrows={boardArrows}
           />
 
           {/*
@@ -473,21 +648,9 @@ function App() {
               >⏭</button>
             </div>
           )}
-
-          {/* Sugerencias de Stockfish */}
-          <MoveSuggestions
-            fen={fen}
-            playerColor={playerColor}
-            gameStatus={gameStatus}
-            onHighlight={setHighlightMove}
-            onOpponentSquares={setOpponentSquares}
-            onWrongMove={handleWrongMove}
-            lastPlayerMove={lastPlayerMove}
-            analysisMode={analysisMode}
-          />
         </div>
 
-        {/* COLUMNA 3: Reloj + Panel de control + historial */}
+        {/* COLUMNA 3: Reloj + panel con pestañas (Sugerencias / Jugadas / Ajustes) */}
         <div className="right-col">
 
           <ChessClock
@@ -497,28 +660,78 @@ function App() {
             gameOver={gameStatus.gameOver}
           />
 
-          <ControlPanel
-            settings={settings}
-            onSettingChange={handleSettingChange}
-            skillLevel={skillLevel}
-            onSkillChange={setSkillLevel}
-            playerColor={playerColor}
-            onColorChange={handleColorChange}
-            onHint={handleHint}
-            onNewGame={handleNewGame}
-            analysisMode={analysisMode}
-            onToggleAnalysis={handleToggleAnalysis}
-            gameStatus={gameStatus}
-            hintMove={hintMove}
-            lastMoveSan={lastMoveSan}
-            clockMinutes={clockMinutes}
-            onClockChange={handleClockChange}
-            gmCommentaryEnabled={gmCommentaryEnabled}
-            onToggleGmCommentary={() => {
-              setGmCommentaryEnabled(p => !p);
-              if (gmCommentaryEnabled) setCommentary(null);
-            }}
-          />
+          {/*
+            Panel derecho con pestañas internas — dirección "1a Verde chess.com".
+            Los tres componentes permanecen siempre montados (solo se ocultan
+            con CSS) para no perder su estado ni interrumpir sus efectos
+            (p. ej. MoveSuggestions sigue pidiendo sugerencias en segundo plano).
+          */}
+          <div className="right-tabs-panel">
+            <div className="right-tabs-bar">
+              <button
+                className={`right-tab ${rightTab === "sugerencias" ? "active" : ""}`}
+                onClick={() => setRightTab("sugerencias")}
+              >💡 Sugerencias</button>
+              <button
+                className={`right-tab ${rightTab === "jugadas" ? "active" : ""}`}
+                onClick={() => setRightTab("jugadas")}
+              >📜 Jugadas</button>
+              <button
+                className={`right-tab ${rightTab === "ajustes" ? "active" : ""}`}
+                onClick={() => setRightTab("ajustes")}
+              >⚙ Ajustes</button>
+            </div>
+
+            <div className="right-tab-content">
+              <div className={rightTab === "sugerencias" ? "" : "tab-hidden"}>
+                <MoveSuggestions
+                  fen={fen}
+                  playerColor={playerColor}
+                  gameStatus={gameStatus}
+                  onHighlight={setHighlightMove}
+                  onTopMove={setTopSuggestion}
+                  onOpponentSquares={setOpponentSquares}
+                  onWrongMove={handleWrongMove}
+                  lastPlayerMove={lastPlayerMove}
+                  analysisMode={analysisMode}
+                  esNotation={esNotation}
+                />
+              </div>
+
+              <div className={rightTab === "jugadas" ? "" : "tab-hidden"}>
+                <MoveHistory
+                  moves={moves}
+                  fenHistory={fenHistory}
+                  esNotation={esNotation}
+                />
+              </div>
+
+              <div className={rightTab === "ajustes" ? "" : "tab-hidden"}>
+                <ControlPanel
+                  settings={settings}
+                  onSettingChange={handleSettingChange}
+                  skillLevel={skillLevel}
+                  onSkillChange={setSkillLevel}
+                  playerColor={playerColor}
+                  onColorChange={handleColorChange}
+                  onHint={handleHint}
+                  onNewGame={handleNewGame}
+                  analysisMode={analysisMode}
+                  onToggleAnalysis={handleToggleAnalysis}
+                  gameStatus={gameStatus}
+                  hintMove={hintMove}
+                  lastMoveSan={lastMoveSan ? formatSan(lastMoveSan, esNotation) : lastMoveSan}
+                  clockMinutes={clockMinutes}
+                  onClockChange={handleClockChange}
+                  gmCommentaryEnabled={gmCommentaryEnabled}
+                  onToggleGmCommentary={() => {
+                    setGmCommentaryEnabled(p => !p);
+                    if (gmCommentaryEnabled) setCommentary(null);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Comentario de Gran Maestro — explica la jugada del jugador Y la del rival */}
           <MoveCommentary
@@ -534,6 +747,7 @@ function App() {
             las casillas de la jugada que Stockfish prefería.
           */}
           <MoveAnalysisCard
+            esNotation={esNotation}
             info={wrongMoveInfo}
             onClose={() => { setWrongMoveInfo(null); setMissedMoveHighlight(null); }}
             onHighlight={(h) => {
@@ -543,12 +757,9 @@ function App() {
             }}
           />
 
-          <MoveHistory
-            moves={moves}
-            fenHistory={fenHistory}
-          />
         </div>
 
+       </ErrorBoundary>
       </main>
     </div>
   );

@@ -20,8 +20,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import chess
 
+from typing import Optional
+
 from app.engine import chess_engine
 from app.commentary_service import generar_comentario
+from app.analysis_service import analyze_move
+from app.chesscom_service import get_archives, get_games
+from app.games_db import init_db, save_game, list_games, get_game, delete_game
 
 
 # ---------------------------------------------------------------------------
@@ -79,9 +84,30 @@ class CommentaryRequest(BaseModel):
     skill_level: int = Field(default=10, ge=0, le=20)
 
 
+class AnalyzeMoveRequest(BaseModel):
+    fen_before: str = Field(description="FEN de la posición antes de la jugada")
+    move_uci: str = Field(description="Jugada realmente hecha, en UCI ('e2e4')")
+    eval_before: Optional[int] = Field(
+        default=None,
+        description="Eval cacheada de fen_before en cp POV blancas "
+                    "(el eval_after del ply anterior). Ahorra una pasada.",
+    )
+    depth: int = Field(default=14, ge=8, le=22, description="Profundidad Stockfish")
+
+
 class NewGameResponse(BaseModel):
     fen: str
     message: str
+
+
+class SaveGameRequest(BaseModel):
+    player_color: str = Field(description="'white' o 'black' — color con el que jugó el usuario")
+    skill_level: int = Field(ge=0, le=20, description="Nivel de Stockfish del rival")
+    result: str = Field(description="'1-0' / '0-1' / '1/2-1/2'")
+    moves_san: list[str] = Field(default_factory=list, description="Jugadas en notación SAN, en orden")
+    white_accuracy: Optional[float] = Field(default=None, description="Precisión de blancas (0-100), si ya se calculó")
+    black_accuracy: Optional[float] = Field(default=None, description="Precisión de negras (0-100), si ya se calculó")
+    opponent_label: Optional[str] = Field(default=None, description="Etiqueta del rival, ej. 'Stockfish nivel 10'")
 
 
 # ---------------------------------------------------------------------------
@@ -96,14 +122,19 @@ async def lifespan(app: FastAPI):
     # Startup: pre-calentar Stockfish para que el primer request no tarde extra
     try:
         chess_engine._get_engine()
-        print("✅ Stockfish iniciado correctamente")
+        print("[OK] Stockfish iniciado correctamente")
     except FileNotFoundError as e:
-        print(f"⚠️  {e}")
+        print(f"[AVISO] {e}")
         print("El servidor arrancará pero los endpoints de juego fallarán.")
+    try:
+        init_db()
+        print("[OK] Base de datos de partidas lista")
+    except Exception as e:
+        print(f"[AVISO] No se pudo inicializar la base de datos de partidas: {e}")
     yield
     # Shutdown: cerrar el proceso de Stockfish limpiamente
     chess_engine.close()
-    print("🔴 Stockfish cerrado")
+    print("[STOP] Stockfish cerrado")
 
 
 # ---------------------------------------------------------------------------
@@ -140,11 +171,13 @@ def health_check():
     Útil para el frontend saber si puede conectarse antes de mostrar el tablero.
     """
     try:
-        engine = chess_engine._get_engine()
+        with chess_engine.lock:
+            engine = chess_engine._get_engine()
+            name = engine.id.get("name", "Stockfish")
         return {
             "status": "ok",
             "stockfish": "connected",
-            "engine_name": engine.id.get("name", "Stockfish"),
+            "engine_name": name,
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Stockfish no disponible: {str(e)}")
@@ -308,6 +341,66 @@ async def get_commentary(request: CommentaryRequest):
         raise HTTPException(status_code=500, detail=f"Error generando comentario: {str(e)}")
 
 
+@app.post("/api/analyze-move")
+def analyze_single_move(request: AnalyzeMoveRequest):
+    """
+    Analiza UNA jugada de una partida importada (Game Review estilo chess.com).
+
+    El frontend recorre el PGN ply a ply llamando aquí. Devuelve clasificación
+    (Brillante/Mejor/Excelente/Buena/Imprecisión/Error/Error grave), la mejor
+    jugada alternativa con su línea, precisión 0-100 y explicación en español.
+
+    Pasar eval_before (el eval_after de la respuesta anterior) reduce el
+    trabajo del motor: solo se analizan 2 posiciones en vez de 3.
+    """
+    try:
+        return analyze_move(
+            fen_before=request.fen_before,
+            move_uci=request.move_uci,
+            eval_before_cp=request.eval_before,
+            depth=request.depth,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error del motor: {str(e)}")
+
+
+@app.get("/api/chesscom/{username}/archives")
+async def chesscom_archives(username: str):
+    """
+    Meses con partidas disponibles para un usuario de chess.com.
+    Devuelve [{year, month}] ordenado del más reciente al más antiguo.
+    """
+    try:
+        archives = await get_archives(username)
+        months = []
+        for url in archives:
+            parts = url.rstrip("/").split("/")
+            months.append({"year": int(parts[-2]), "month": int(parts[-1])})
+        months.sort(key=lambda m: (m["year"], m["month"]), reverse=True)
+        return {"months": months}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error consultando chess.com: {str(e)}")
+
+
+@app.get("/api/chesscom/{username}/games/{year}/{month}")
+async def chesscom_games(username: str, year: int, month: int):
+    """
+    Partidas de un mes concreto de un usuario de chess.com, con PGN completo.
+    El frontend muestra la lista y el usuario elige cuál analizar.
+    """
+    try:
+        games = await get_games(username, year, month)
+        return {"games": games}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error consultando chess.com: {str(e)}")
+
+
 @app.get("/api/legal-moves")
 def get_legal_moves(fen: str):
     """
@@ -331,3 +424,58 @@ def get_legal_moves(fen: str):
         raise HTTPException(status_code=400, detail=f"FEN inválido: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Historial de partidas — persistencia en SQLite (sobrevive a reiniciar Docker).
+# ---------------------------------------------------------------------------
+
+@app.post("/api/games")
+def create_game(request: SaveGameRequest):
+    """
+    Guarda una partida terminada (jugador vs. bot) en el historial persistente.
+
+    Se llama automáticamente desde el frontend cuando `gameStatus.gameOver`
+    pasa a True fuera del modo análisis libre.
+    """
+    try:
+        game_id = save_game(request.model_dump())
+        return {"id": game_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error guardando la partida: {str(e)}")
+
+
+@app.get("/api/games")
+def get_games_history():
+    """
+    Lista resumida del historial de partidas (más reciente primero).
+    No incluye las jugadas completas — para eso usa GET /api/games/{id}.
+    """
+    try:
+        return {"games": list_games()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error leyendo el historial: {str(e)}")
+
+
+@app.get("/api/games/{game_id}")
+def get_game_detail(game_id: int):
+    """Registro completo de una partida guardada, incluyendo la lista de jugadas SAN."""
+    try:
+        game = get_game(game_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error leyendo la partida: {str(e)}")
+    if game is None:
+        raise HTTPException(status_code=404, detail="Partida no encontrada")
+    return game
+
+
+@app.delete("/api/games/{game_id}")
+def remove_game(game_id: int):
+    """Borra una partida del historial."""
+    try:
+        deleted = delete_game(game_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error borrando la partida: {str(e)}")
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Partida no encontrada")
+    return {"deleted": True}

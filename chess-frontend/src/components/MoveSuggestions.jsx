@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Chess } from "chess.js";
 import { getTopMoves } from "../api/chess";
+import { formatSan, translateSanInText } from "../utils/notation";
 
 // ── Íconos de piezas ─────────────────────────────────────────────────────────
 
@@ -374,9 +375,11 @@ const MoveSuggestions = ({
   gameStatus,
   onHighlight,
   onOpponentSquares,
+  onTopMove,                // callback: ({ from_square, to_square } | null) → void — mejor sugerencia actual (para la flecha verde)
   onWrongMove,             // callback: (wrongMoveInfo | null) → void
   lastPlayerMove = null,   // { san, fenBefore } — última jugada del jugador
   analysisMode = false,
+  esNotation = false,      // true → mostrar SAN en español (Cf3 en vez de Nf3)
 }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading]         = useState(false);
@@ -482,6 +485,17 @@ const MoveSuggestions = ({
     if (!lastPlayerMove) onWrongMove?.(null);
   }, [lastPlayerMove]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Reportar la mejor sugerencia al padre (flecha verde permanente) ──────
+
+  useEffect(() => {
+    if (suggestions.length > 0) {
+      onTopMove?.({ from_square: suggestions[0].from_square, to_square: suggestions[0].to_square });
+    } else {
+      onTopMove?.(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions]);
+
   // ── Calcular squares de amenaza del rival ─────────────────────────────────
 
   useEffect(() => {
@@ -569,7 +583,7 @@ const MoveSuggestions = ({
                   <span className="suggestion-rank">{rank}</span>
                   <div className="suggestion-move">
                     <span className="suggestion-piece">{icon}</span>
-                    <span className="suggestion-san">{move.san}</span>
+                    <span className="suggestion-san">{formatSan(move.san, esNotation)}</span>
                     <span className="suggestion-squares">
                       {move.from_square} → {move.to_square}
                     </span>
@@ -578,12 +592,12 @@ const MoveSuggestions = ({
                 </div>
 
                 {/* Explicación: POR QUÉ es la mejor jugada */}
-                <div className="suggestion-explanation">{explanation}</div>
+                <div className="suggestion-explanation">{translateSanInText(explanation, esNotation)}</div>
 
                 {/* Respuesta probable del rival */}
                 {oppResponse && (
                   <div className="suggestion-opponent">
-                    ⚡ {oppResponse}
+                    ⚡ {translateSanInText(oppResponse, esNotation)}
                   </div>
                 )}
 
@@ -626,3 +640,4 @@ const MoveSuggestions = ({
 };
 
 export default MoveSuggestions;
+

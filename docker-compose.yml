@@ -1,0 +1,43 @@
+# docker-compose.yml — levanta backend (FastAPI + Stockfish) y frontend
+# (React build servido por nginx) con un solo comando:
+#
+#   docker compose up --build
+#
+# Requiere chess-backend/.env con ANTHROPIC_API_KEY (ver README). Sin ese
+# archivo el backend arranca igual — solo el comentario GM 🎓 no funcionará.
+#
+# El historial de partidas se guarda en SQLite dentro del volumen nombrado
+# `games_data` (montado en /app/data del backend), así que sobrevive a
+# `docker compose down` / `up` (solo se pierde con `down -v`).
+
+services:
+  backend:
+    build: ./chess-backend
+    container_name: chess-trainer-backend
+    env_file:
+      # required: false → si aún no creaste el .env (ver README), el backend
+      # arranca igual sin ANTHROPIC_API_KEY; solo el comentario GM no funciona.
+      - path: ./chess-backend/.env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persiste el historial de partidas (SQLite) entre reinicios del contenedor.
+      - games_data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./chess-frontend
+      args:
+        VITE_API_URL: /api
+    container_name: chess-trainer-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  games_data:
