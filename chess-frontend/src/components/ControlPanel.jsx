@@ -102,14 +102,16 @@ const ControlPanel = ({
   onToggleGmCommentary,
 }) => {
   const { label, elo, color } = getLevelInfo(skillLevel);
-  const { turn, inCheck, gameOver, isThinking } = gameStatus;
+  const { turn, inCheck, gameOver, isThinking, timeout, result } = gameStatus;
 
   /**
    * Determina el texto de estado de la partida.
-   * Orden de prioridad: game over > pensando > jaque > turno normal
+   * Orden de prioridad: game over (por tiempo o normal) > pensando > jaque > turno
    */
   const statusText = gameOver
-    ? "Partida terminada"
+    ? (timeout
+        ? `⏰ Tiempo agotado — ganan ${result === "1-0" ? "Blancas" : "Negras"}`
+        : "Partida terminada")
     : isThinking
     ? "Stockfish pensando..."
     : inCheck

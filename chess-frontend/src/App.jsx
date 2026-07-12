@@ -80,13 +80,14 @@ function App() {
   const [clockMinutes, setClockMinutes] = useState(0);
   const [whiteTime, setWhiteTime]       = useState(null);
   const [blackTime, setBlackTime]       = useState(null);
+  // timeoutLoss = color que perdió por tiempo ("white" | "black" | null).
+  // Es DERIVADO del reloj: si un tiempo llegó a 0, ese color perdió. Al empezar
+  // una partida nueva los relojes se recargan (> 0) y esto vuelve a null solo.
+  const timeoutLoss = whiteTime === 0 ? "white" : blackTime === 0 ? "black" : null;
 
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [hintMove, setHintMove]             = useState(null);
   const [highlightMove, setHighlightMove]   = useState(null);
-  // topSuggestion = { from_square, to_square } de la mejor jugada actual,
-  // reportada por MoveSuggestions — se usa para la flecha verde permanente.
-  const [topSuggestion, setTopSuggestion]   = useState(null);
   const [backendOk, setBackendOk]           = useState(null);
   const [opponentSquares, setOpponentSquares] = useState({});
 
@@ -108,9 +109,25 @@ function App() {
   // Ref para acceder a lastPlayerMove dentro de efectos async sin stale closure
   const lastPlayerMoveRef = useRef(null);
 
+  // ── Estado efectivo de la partida ────────────────────────────────────────────
+  // Board reporta gameStatus solo con lo que sabe chess.js (mate, tablas...).
+  // Si alguien perdió por tiempo, aquí se fusiona: gameOver forzado + resultado.
+  // TODO el resto de la app debe usar effectiveStatus, no gameStatus.
+  const effectiveStatus = useMemo(() => {
+    // Si la partida ya terminó por mate/tablas, ese resultado manda
+    if (!timeoutLoss || gameStatus.gameOver) return gameStatus;
+    return {
+      ...gameStatus,
+      gameOver:   true,
+      isThinking: false,
+      timeout:    true,
+      result:     timeoutLoss === "white" ? "0-1" : "1-0",
+    };
+  }, [gameStatus, timeoutLoss]);
+
   // ── Refs para el reloj ───────────────────────────────────────────────────────
-  const gameStatusRef = useRef(gameStatus);
-  useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
+  const gameStatusRef = useRef(effectiveStatus);
+  useEffect(() => { gameStatusRef.current = effectiveStatus; }, [effectiveStatus]);
 
   // ── Guardado automático en el historial al terminar la partida ──────────────
   // savedGameNotice = { id } mientras se muestra la tarjeta "Partida guardada".
@@ -180,32 +197,33 @@ function App() {
   // Solo en la transición false → true de gameOver, y nunca en modo análisis
   // libre (ahí no hay "jugador vs. bot" que valga la pena archivar).
   useEffect(() => {
-    const isOver = !!gameStatus.gameOver;
+    const isOver = !!effectiveStatus.gameOver;
     if (isOver && !wasGameOverRef.current && !analysisMode && moves.length > 0) {
       const movesSan = moves.map(m => m.san);
       saveGame({
         player_color: playerColor,
         skill_level:  skillLevel,
-        result:       gameStatus.result ?? "*",
+        result:       effectiveStatus.result ?? "*",
         moves_san:    movesSan,
       })
         .then(res => setSavedGameNotice({ id: res.data.id }))
         .catch(err => console.error("No se pudo guardar la partida en el historial:", err));
     }
     wasGameOverRef.current = isOver;
-  }, [gameStatus.gameOver, gameStatus.result, analysisMode, moves, playerColor, skillLevel]);
+  }, [effectiveStatus.gameOver, effectiveStatus.result, analysisMode, moves, playerColor, skillLevel]);
 
   /**
    * handleWrongMove — recibe el análisis de la jugada subóptima desde MoveSuggestions.
-   * Actualiza el estado y extrae las casillas para resaltar en el tablero.
+   * Solo actualiza la tarjeta de análisis. La flecha naranja en el tablero NO se
+   * pinta automáticamente: aparece únicamente cuando el usuario pasa el cursor
+   * sobre "Stockfish prefería" en la tarjeta (via onHighlight de MoveAnalysisCard).
    */
   const handleWrongMove = useCallback((info) => {
     setWrongMoveInfo(info);
-    if (info?.suggestedFrom && info?.suggestedTo) {
-      setMissedMoveHighlight({ from_square: info.suggestedFrom, to_square: info.suggestedTo });
-    } else {
-      setMissedMoveHighlight(null);
-    }
+    // SIEMPRE limpiar la flecha naranja cuando cambia el análisis: si quedara
+    // una de un hover anterior (o de una tarjeta previa), sería una flecha
+    // "fantasma" apuntando a una jugada que ya no corresponde.
+    setMissedMoveHighlight(null);
   }, []);
 
   // ── Handlers principales ─────────────────────────────────────────────────────
@@ -302,14 +320,14 @@ function App() {
   }, []);
 
   const handleHint = useCallback(async () => {
-    if (gameStatus.gameOver || gameStatus.isThinking) return;
+    if (effectiveStatus.gameOver || effectiveStatus.isThinking) return;
     try {
       const res = await getHint(fen);
       setHintMove(res.data);
     } catch (err) {
       console.error("Error al obtener pista:", err);
     }
-  }, [fen, gameStatus]);
+  }, [fen, effectiveStatus]);
 
   const handleToggleAnalysis = useCallback(() => {
     setAnalysisMode(prev => !prev);
@@ -422,26 +440,24 @@ function App() {
   const activeHint   = hintMove ?? highlightMove ?? missedMoveHighlight;
 
   // ── Flechas del tablero (estilo chess.com) ────────────────────────────────
-  // Verde = mejor jugada (SIEMPRE pintada por defecto mientras es tu turno,
-  // sin importar qué estés pasando el mouse) · Amarillo = hover sobre una
-  // sugerencia (se dibuja encima, sin apagar la verde) · Azul = pista pedida
+  // Las flechas solo aparecen cuando el jugador las pide explícitamente:
+  // Verde = hover sobre una sugerencia del panel · Azul = pista pedida
   // · Naranja = jugada que debiste hacer (tras un error).
+  // (No se pinta ninguna flecha "permanente" — así el tablero queda limpio
+  // y puedes pensar tu jugada sin spoilers.)
   const boardArrows = useMemo(() => {
     const list = [];
-    if (topSuggestion) {
-      list.push({ from: topSuggestion.from_square, to: topSuggestion.to_square, color: "#81b64c", opacity: 0.8 });
-    }
     if (missedMoveHighlight && !hintMove && !highlightMove) {
       list.push({ from: missedMoveHighlight.from_square, to: missedMoveHighlight.to_square, color: "#e58f2a", opacity: 0.85 });
     }
     if (highlightMove) {
-      list.push({ from: highlightMove.from_square, to: highlightMove.to_square, color: "#f0c15c", opacity: 0.9 });
+      list.push({ from: highlightMove.from_square, to: highlightMove.to_square, color: "#81b64c", opacity: 0.9 });
     }
     if (hintMove) {
       list.push({ from: hintMove.from_square, to: hintMove.to_square, color: "#60a5fa", opacity: 0.95 });
     }
     return list;
-  }, [topSuggestion, highlightMove, hintMove, missedMoveHighlight]);
+  }, [highlightMove, hintMove, missedMoveHighlight]);
 
   // Apertura detectada en vivo — coincide el prefijo más largo de la base ECO.
   // Se refina mientras juegas: "Peón de rey" → "Italiana" → "Giuoco Piano".
@@ -603,6 +619,7 @@ function App() {
             analysisMode={analysisMode}
             opponentSquares={opponentSquares}
             arrows={boardArrows}
+            frozen={!!timeoutLoss}
           />
 
           {/*
@@ -657,7 +674,8 @@ function App() {
             whiteTime={whiteTime}
             blackTime={blackTime}
             activeColor={activeColor}
-            gameOver={gameStatus.gameOver}
+            gameOver={effectiveStatus.gameOver}
+            timeoutLoser={timeoutLoss}
           />
 
           {/*
@@ -687,9 +705,8 @@ function App() {
                 <MoveSuggestions
                   fen={fen}
                   playerColor={playerColor}
-                  gameStatus={gameStatus}
+                  gameStatus={effectiveStatus}
                   onHighlight={setHighlightMove}
-                  onTopMove={setTopSuggestion}
                   onOpponentSquares={setOpponentSquares}
                   onWrongMove={handleWrongMove}
                   lastPlayerMove={lastPlayerMove}
@@ -718,7 +735,7 @@ function App() {
                   onNewGame={handleNewGame}
                   analysisMode={analysisMode}
                   onToggleAnalysis={handleToggleAnalysis}
-                  gameStatus={gameStatus}
+                  gameStatus={effectiveStatus}
                   hintMove={hintMove}
                   lastMoveSan={lastMoveSan ? formatSan(lastMoveSan, esNotation) : lastMoveSan}
                   clockMinutes={clockMinutes}
@@ -750,11 +767,11 @@ function App() {
             esNotation={esNotation}
             info={wrongMoveInfo}
             onClose={() => { setWrongMoveInfo(null); setMissedMoveHighlight(null); }}
-            onHighlight={(h) => {
-              // Al hacer hover en la tarjeta, resaltar en el tablero
-              // Solo si no hay pista activa ni sugerencia en hover
-              if (!hintMove && !highlightMove) setMissedMoveHighlight(h);
-            }}
+            // Hover en "Stockfish prefería" → flecha naranja; al salir → se borra.
+            // SIN condiciones: si se condiciona la limpieza (p. ej. a que no haya
+            // otra sugerencia en hover), el evento de salida se pierde y la
+            // flecha queda pegada en el tablero sin hover activo.
+            onHighlight={setMissedMoveHighlight}
           />
 
         </div>

@@ -1492,6 +1492,26 @@ body {
   animation: pulse 0.5s infinite;
 }
 
+/* Reloj del jugador que perdió por tiempo: rojo fijo, sin animación */
+.clock-face.clock-flagged {
+  background: rgba(202, 52, 49, 0.12);
+  border-left: 3px solid var(--danger, #ca3431);
+  padding-left: 11px;
+}
+
+.clock-face.clock-flagged .clock-time {
+  color: var(--danger, #ca3431) !important;
+  animation: none;
+}
+
+.clock-timeout-banner {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #f0b8b6;
+  background: rgba(202, 52, 49, 0.14);
+  border-top: 1px solid rgba(202, 52, 49, 0.45);
+}
+
 .clock-label {
   font-size: 11px;
   color: var(--text-2);

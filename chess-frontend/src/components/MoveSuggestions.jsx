@@ -373,9 +373,8 @@ const MoveSuggestions = ({
   fen,
   playerColor,
   gameStatus,
-  onHighlight,
+  onHighlight,             // callback: ({ from_square, to_square } | null) → void — flecha verde al pasar el cursor sobre una sugerencia
   onOpponentSquares,
-  onTopMove,                // callback: ({ from_square, to_square } | null) → void — mejor sugerencia actual (para la flecha verde)
   onWrongMove,             // callback: (wrongMoveInfo | null) → void
   lastPlayerMove = null,   // { san, fenBefore } — última jugada del jugador
   analysisMode = false,
@@ -417,6 +416,9 @@ const MoveSuggestions = ({
     setLoading(true);
     setSuggestions([]);
     setError(null);
+    // Las tarjetas se desmontan: si el cursor estaba sobre una, su
+    // onMouseLeave nunca dispara — limpiar la flecha para que no quede pegada.
+    onHighlight?.(null);
 
     getTopMoves(currentFen, 3, 1.5)
       .then((res) => {
@@ -450,6 +452,7 @@ const MoveSuggestions = ({
       setSuggestions([]);
       setError(null);
       onOpponentSquares?.({});
+      onHighlight?.(null); // ídem: tarjetas desmontadas → sin flecha pegada
       return;
     }
     fetchSuggestions(fen);
@@ -484,17 +487,6 @@ const MoveSuggestions = ({
   useEffect(() => {
     if (!lastPlayerMove) onWrongMove?.(null);
   }, [lastPlayerMove]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Reportar la mejor sugerencia al padre (flecha verde permanente) ──────
-
-  useEffect(() => {
-    if (suggestions.length > 0) {
-      onTopMove?.({ from_square: suggestions[0].from_square, to_square: suggestions[0].to_square });
-    } else {
-      onTopMove?.(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestions]);
 
   // ── Calcular squares de amenaza del rival ─────────────────────────────────
 
@@ -629,7 +621,7 @@ const MoveSuggestions = ({
           {/* Nota de hover */}
           {!loading && suggestions.length > 0 && (
             <p className="suggestions-note">
-              Pasa el cursor sobre una jugada para verla en el tablero.
+              💡 Pasa el cursor sobre una sugerencia para ver su flecha verde en el tablero.
             </p>
           )}
 

@@ -60,6 +60,7 @@ const Board = ({
   analysisMode     = false,    // true = mueve ambos colores, sin bot
   opponentSquares  = {},        // { sq: "attacker"|"attacked" } — amenazas del rival
   arrows           = [],        // [{ from, to, color?, opacity? }] — flechas estilo chess.com
+  frozen           = false,    // true = partida terminada externamente (p. ej. por tiempo): nadie mueve
 }) => {
 
   // ── Estado local ────────────────────────────────────────────────────────────
@@ -85,6 +86,11 @@ const Board = ({
   // analysisModeRef: acceso al modo análisis dentro de callbacks asíncronos.
   const analysisModeRef = useRef(analysisMode);
   useEffect(() => { analysisModeRef.current = analysisMode; }, [analysisMode]);
+
+  // frozenRef: acceso a frozen dentro de callbacks asíncronos (respuesta del
+  // bot que llega DESPUÉS de que la partida terminó por tiempo → se descarta).
+  const frozenRef = useRef(frozen);
+  useEffect(() => { frozenRef.current = frozen; }, [frozen]);
 
 
   // ── Sincronización con el prop fen (nueva partida) ───────────────────────────
@@ -179,6 +185,8 @@ const Board = ({
   const triggerBotMove = async (currentFen, currentGame) => {
     // En modo análisis el humano mueve ambos colores — el bot nunca responde
     if (analysisModeRef.current) return;
+    // Partida terminada externamente (p. ej. por tiempo): el bot no juega
+    if (frozenRef.current) return;
 
     setBotError(null);
     setIsThinking(true);
@@ -186,6 +194,10 @@ const Board = ({
 
     try {
       const res = await getBotMove(currentFen, skillLevel);
+
+      // Si la partida terminó por tiempo MIENTRAS el bot pensaba, descartar
+      // su jugada: el resultado ya está decidido.
+      if (frozenRef.current) return;
 
       // res.data.move es la jugada en formato UCI: "e7e5", "g8f6", "e1g1"
       const uci = res?.data?.move;
@@ -311,7 +323,7 @@ const Board = ({
    * Retorna true para aceptar el movimiento, false para rechazarlo.
    */
   const onDrop = useCallback(({ piece, sourceSquare, targetSquare }) => {
-    if (isThinking || gameRef.current.isGameOver()) return false;
+    if (frozen || isThinking || gameRef.current.isGameOver()) return false;
 
     if (!analysisMode) {
       // Modo normal: solo mover piezas propias en turno propio
@@ -326,7 +338,7 @@ const Board = ({
     }
 
     return applyPlayerMove(sourceSquare, targetSquare);
-  }, [isThinking, playerColor, analysisMode, applyPlayerMove]);
+  }, [frozen, isThinking, playerColor, analysisMode, applyPlayerMove]);
 
   /**
    * onSquareClick — se llama cuando el jugador hace clic en una casilla.
@@ -340,7 +352,7 @@ const Board = ({
    *   2do clic en destino legal → ejecutar el movimiento
    */
   const onSquareClick = useCallback(({ square }) => {
-    if (isThinking || gameRef.current.isGameOver()) return;
+    if (frozen || isThinking || gameRef.current.isGameOver()) return;
 
     const currentGame = gameRef.current;
     const pieceOnSquare = currentGame.get(square);
@@ -374,7 +386,7 @@ const Board = ({
     // Clic en casilla vacía o pieza del turno contrario → deseleccionar
     setLegalDots({});
     setSelectedSquare(null);
-  }, [isThinking, playerColor, analysisMode, selectedSquare, legalDots, applyPlayerMove]);
+  }, [frozen, isThinking, playerColor, analysisMode, selectedSquare, legalDots, applyPlayerMove]);
 
   /**
    * canDragPiece — le dice a react-chessboard qué piezas se pueden arrastrar.
@@ -383,7 +395,7 @@ const Board = ({
    * Retorna true si se puede arrastrar esa pieza, false si no.
    */
   const canDragPiece = useCallback(({ piece }) => {
-    if (isThinking || gameRef.current.isGameOver()) return false;
+    if (frozen || isThinking || gameRef.current.isGameOver()) return false;
     if (analysisMode) {
       // En análisis: puede arrastrar la pieza del turno actual
       const pieceColor = piece[0]; // "w" o "b"
@@ -393,7 +405,7 @@ const Board = ({
     if (pieceColor !== playerColor) return false;
     const myTurn = playerColor === "white" ? "w" : "b";
     return gameRef.current.turn() === myTurn;
-  }, [isThinking, playerColor, analysisMode]);
+  }, [frozen, isThinking, playerColor, analysisMode]);
 
 
   // ── Estilos de casillas ─────────────────────────────────────────────────────

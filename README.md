@@ -98,6 +98,42 @@ docker compose down                 # detener y eliminar los contenedores
 docker compose up --build backend   # reconstruir solo el backend tras un cambio
 ```
 
+### 🛑 Cómo apagar los contenedores
+
+Depende de cómo los levantaste:
+
+**Si usaste `docker compose up --build` (en primer plano, viendo los logs):**
+1. Ve a la terminal donde está corriendo y presiona **`Ctrl + C`**.
+   Esto **detiene** los contenedores (equivale a `docker compose stop`).
+2. (Opcional) Para además **eliminarlos**, ejecuta:
+   ```bash
+   docker compose down
+   ```
+
+**Si usaste `docker compose up -d` (en segundo plano):**
+No hay terminal que cerrar — apágalos con un comando desde la carpeta del proyecto:
+```bash
+docker compose down
+```
+
+**Diferencia entre `stop` y `down`:**
+
+| Comando | Qué hace | Cuándo usarlo |
+|---------|----------|---------------|
+| `docker compose stop` | Solo **pausa** los contenedores. Siguen existiendo y arrancan más rápido después con `docker compose start`. | Vas a volver a usar la app pronto y no cambiaste código. |
+| `docker compose down` | **Detiene y elimina** los contenedores y la red. La próxima vez se crean de nuevo (rápido, las imágenes ya están construidas). | Terminaste por hoy, o quieres un arranque limpio. Es la opción recomendada. |
+| `docker compose down -v` | Igual que `down` pero además **borra los volúmenes** (⚠ se pierden datos persistidos, como el historial de partidas guardadas). | Solo si quieres resetear la app a cero. |
+
+**Verificar que quedaron apagados:**
+```bash
+docker compose ps
+```
+Si no aparece ninguna fila (o dicen `Exited`), ya están apagados. ✅
+
+> 💡 `docker compose down` **no borra** las imágenes construidas ni tu código —
+> la próxima vez que hagas `docker compose up` arranca en segundos sin reconstruir
+> (salvo que uses `--build`).
+
 ### Cambiar de puerto (si 5173 u 8000 están ocupados)
 Edita `docker-compose.yml`. Los puertos son `"HOST:CONTENEDOR"` — cambia solo el
 número de la izquierda (el del host):

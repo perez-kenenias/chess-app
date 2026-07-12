@@ -112,6 +112,15 @@ export default function GameReview({ active = true, esNotation = false }) {
   // ── Navegación por la partida ────────────────────────────────────────────
   const [ply, setPly] = useState(-1); // -1 = posición inicial
 
+  // ── Vista previa de la mejor jugada (estilo chess.com) ───────────────────
+  // Al pulsar el botón "Ver la mejor jugada", el tablero muestra cómo habría
+  // quedado la posición si se hubiera jugado la sugerencia de Stockfish en
+  // vez de la jugada real. Se guarda EL PLY donde se activó: si el usuario
+  // navega a otra jugada, la vista previa se apaga sola (bestPly !== ply).
+  const [bestPly, setBestPly] = useState(null);
+  const showBest = bestPly === ply && ply >= 0;
+  const toggleShowBest = () => setBestPly(showBest ? null : ply);
+
   // ── Orientación del tablero ──────────────────────────────────────────────
   // Al importar desde chess.com se detecta automáticamente con qué color
   // jugaste (comparando tu usuario) y el tablero se orienta desde tu lado.
@@ -281,13 +290,46 @@ export default function GameReview({ active = true, esNotation = false }) {
   }, [game]);
 
   // ── Posición y resaltados actuales ───────────────────────────────────────
-  const currentFen = ply < 0 ? START_FEN
-    : (game?.plies[ply]?.fenAfter ?? START_FEN);
   const currentAnalysis = ply >= 0 ? analysis[ply] : null;
+
+  // ¿Esta jugada tiene una alternativa mejor que mostrar?
+  const hasBetterMove = useMemo(() => {
+    if (ply < 0 || !game || !currentAnalysis?.best_move_uci) return false;
+    if (["best", "brilliant", "forced"].includes(currentAnalysis.classification?.key)) return false;
+    const p = game.plies[ply];
+    return currentAnalysis.best_move_uci.slice(0, 4) !== p.uci.slice(0, 4);
+  }, [ply, game, currentAnalysis]);
+
+  // Posición de la vista previa: FEN resultante de jugar la MEJOR jugada
+  // (en vez de la real) desde la posición anterior a este ply.
+  const bestPreview = useMemo(() => {
+    if (!showBest || !hasBetterMove) return null;
+    try {
+      const chess = new Chess(game.plies[ply].fenBefore);
+      const uci = currentAnalysis.best_move_uci;
+      const m = chess.move({
+        from: uci.slice(0, 2),
+        to: uci.slice(2, 4),
+        promotion: uci.slice(4) || undefined,
+      });
+      if (!m) return null;
+      return { fen: chess.fen(), from: m.from, to: m.to };
+    } catch {
+      return null;
+    }
+  }, [showBest, hasBetterMove, game, ply, currentAnalysis]);
+
+  const currentFen = bestPreview ? bestPreview.fen
+    : ply < 0 ? START_FEN
+    : (game?.plies[ply]?.fenAfter ?? START_FEN);
 
   const squareStyles = useMemo(() => {
     const styles = {};
-    if (ply >= 0 && game) {
+    if (bestPreview) {
+      // Vista previa: resaltar en verde la mejor jugada
+      styles[bestPreview.from] = { backgroundColor: "#81b64c55" };
+      styles[bestPreview.to]   = { backgroundColor: "#81b64c88" };
+    } else if (ply >= 0 && game) {
       const p = game.plies[ply];
       const from = p.uci.slice(0, 2), to = p.uci.slice(2, 4);
       const key = currentAnalysis?.classification?.key;
@@ -296,12 +338,16 @@ export default function GameReview({ active = true, esNotation = false }) {
       styles[to]   = { backgroundColor: `${color}88` };
     }
     return styles;
-  }, [ply, game, currentAnalysis]);
+  }, [ply, game, currentAnalysis, bestPreview]);
 
   // ── Flechas: jugada realizada (color según clasificación) + mejor
   // alternativa en verde, igual que el diseño de referencia (1d Analizar). ──
   const reviewArrows = useMemo(() => {
     if (ply < 0 || !game) return [];
+    // Vista previa activa: solo la flecha verde de la mejor jugada
+    if (bestPreview) {
+      return [{ from: bestPreview.from, to: bestPreview.to, color: "#81b64c", opacity: 0.9 }];
+    }
     const arrows = [];
     const p = game.plies[ply];
     const from = p.uci.slice(0, 2), to = p.uci.slice(2, 4);
@@ -317,7 +363,7 @@ export default function GameReview({ active = true, esNotation = false }) {
       }
     }
     return arrows;
-  }, [ply, game, currentAnalysis]);
+  }, [ply, game, currentAnalysis, bestPreview]);
 
   // ── Teclado ← → para navegar (solo con la pestaña visible) ───────────────
   useEffect(() => {
@@ -542,6 +588,14 @@ export default function GameReview({ active = true, esNotation = false }) {
           >🔄 Voltear tablero</button>
         </div>
 
+        {/* Aviso: el tablero está mostrando la MEJOR jugada, no la real */}
+        {bestPreview && (
+          <div className="best-preview-banner">
+            👁 Viendo la <b>mejor jugada</b>: {formatSan(currentAnalysis.best_move_san, esNotation)} —
+            esta jugada <b>no</b> se hizo en la partida.
+          </div>
+        )}
+
         <div style={{ position: "relative" }}>
           <Chessboard
             options={{
@@ -570,7 +624,7 @@ export default function GameReview({ active = true, esNotation = false }) {
         </div>
 
         {analysis.length > 0 && (
-          <EvalGraph analysis={analysis} currentPly={ply} onSelectPly={setPly} />
+          <EvalGraph analysis={analysis} currentPly={ply} onSelectPly={setPly} esNotation={esNotation} />
         )}
       </div>
 
@@ -675,6 +729,19 @@ export default function GameReview({ active = true, esNotation = false }) {
                 {currentAnalysis.best_line_san.length > 1 &&
                   <span className="explain-line"> ({currentAnalysis.best_line_san.map(s => formatSan(s, esNotation)).join(" ")})</span>}
               </p>
+            )}
+            {hasBetterMove && (
+              <button
+                className={`btn-best-preview ${showBest ? "active" : ""}`}
+                onClick={toggleShowBest}
+                title={showBest
+                  ? "Volver a mostrar la jugada que se hizo en la partida"
+                  : "Ver en el tablero cómo quedaría la posición con la mejor jugada"}
+              >
+                {showBest
+                  ? "↩ Volver a la jugada real"
+                  : `👁 Ver ${formatSan(currentAnalysis.best_move_san, esNotation)} en el tablero`}
+              </button>
             )}
           </div>
         )}
